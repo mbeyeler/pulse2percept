@@ -196,6 +196,22 @@ class TemporalModel(object):
         # avoid division by zero
         return b3 / (1e-10 + b3max) * scale
 
+    def power_nonlinearity(self, b3):
+        # This only applies in the 'Horsager' model for now.
+        # In Horsager (2009), there was a power nonlinearity instead of the
+        # stationary nonlinearity. The exponent `beta` had two values,
+        # depending on whether close to threshold or not. 
+        # For our purposes, we need a continuous value for `beta`, and judging
+        # from the Nanduri data this function should decrease with increasing
+        # amplitude. So we fit it with a decaying exponential as a function of
+        # b3.max():
+        scale = 1.48
+        decay = 3.9
+        shift = 1.56
+        beta = np.minimum(2.4, scale * np.exp(-decay * b3.max()) + shift)
+
+        # power nonlinearity
+        return np.maximum(0, b3) ** beta
 
     def slow_response(self, b4):
         """Slow response function (Box 5)
@@ -253,9 +269,11 @@ class TemporalModel(object):
         elif self.model == 'Krishnan':
             # Krishnan: first charge accumulation, then fast response
             return self.cascade_krishnan(ecm, dojit)
+        elif self.model == 'Horsager':
+            return self.cascade_horsager(ecm, dojit)
         else:
             raise ValueError('Acceptable values for "model" are: '
-                             '{"Nanduri", "Krishnan"}')
+                             '{"Nanduri", "Krishnan", "Horsager"}')
 
     def cascade_nanduri(self, ecm, dojit):
         """Model cascade according to Nanduri et al. (2012).
@@ -304,6 +322,19 @@ class TemporalModel(object):
         resp = self.stationary_nonlinearity(resp)
         resp = self.slow_response(resp)
         return utils.TimeSeries(self.tsample, resp)
+
+    def cascade_horsager(self, ecm, dojit):
+        """Model cascade according to Horsager et al. (2009).
+
+        Power nonlinearity instead of stationary nonlinearity.
+        Exponent `beta` is a decaying exponential as a function of max
+        amplitude. Fit to Nanduri data.
+        """
+        ca = self.charge_accumulation(ecm.data)
+        resp = self.fast_response(ecm.data - ca, dojit=dojit)
+        resp = self.power_nonlinearity(resp)
+        resp = self.slow_response(resp)
+        return utils.TimSeries(self.tsamlpe, resp)
 
 
 def pulse2percept(temporal_model, ecs, retina, stimuli, rs, engine='joblib',
