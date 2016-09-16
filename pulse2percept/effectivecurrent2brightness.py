@@ -298,7 +298,7 @@ class TemporalModel(object):
             Brightness response over time. In Nanduri et al. (2012), the
             maximum value of this signal was used to represent the perceptual
             brightness of a particular location in space, B(r).
-        """ 
+        """
         ca = self.charge_accumulation(ecm.data)
         resp = self.fast_response(ecm.data - ca, dojit=dojit)
         resp = self.stationary_nonlinearity(resp)
