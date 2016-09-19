@@ -165,21 +165,25 @@ def retinalmovie2electrodtimeseries(rf, movie, fps=30):
 
     return rflum
 
+
 def get_pulse(pulse_dur, tsample, interphase_dur, pulsetype):
     on = np.ones(round(pulse_dur / tsample))
     gap = np.zeros(round(interphase_dur / tsample))
     off = -1 * on
     if pulsetype == 'cathodicfirst':
-        pulse = np.concatenate((on, gap), axis=0)
-        pulse = np.concatenate((pulse, off), axis=0)
-
-    elif pulsetype == 'anodicfirst':
+        # cathodicfirst has negative pulse first
         pulse = np.concatenate((off, gap), axis=0)
         pulse = np.concatenate((pulse, on), axis=0)
+    elif pulsetype == 'anodicfirst':
+        pulse = np.concatenate((on, gap), axis=0)
+        pulse = np.concatenate((pulse, off), axis=0)
     else:
-        print('pulse not defined')
+        raise ValueError('Acceptable values for `pulsetype`: "cathodicfirst",'
+                         '"anodicfirst"')
+
     return pulse
-    
+
+
 def accumulatingvoltage(ptrain,tau=45.25/1000):
     """
    Models accumulating voltage on the electrode

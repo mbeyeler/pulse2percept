@@ -205,10 +205,11 @@ class TemporalModel(object):
         # from the Nanduri data this function should decrease with increasing
         # amplitude. So we fit it with a decaying exponential as a function of
         # b3.max():
-        scale = 1.48
-        decay = 3.9
-        shift = 1.56
-        beta = np.minimum(2.4, scale * np.exp(-decay * b3.max()) + shift)
+        scale = 1.99
+        decay = 6.57
+        shift = 1.69
+        norm = 200.0  # normalize by some max current
+        beta = np.minimum(2.79, scale * np.exp(-decay * b3.max() / norm) + shift)
 
         # power nonlinearity
         return np.maximum(0, b3) ** beta
