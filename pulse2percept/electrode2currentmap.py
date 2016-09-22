@@ -94,17 +94,16 @@ class Electrode(object):
         Ahuja et al. [2]  An In Vitro Model of a Retinal Prosthesis. Ashish K. Ahuja,
         Matthew R. Behrend, Masako Kuroda, Mark S. Humayun, and
         James D. Weiland (2008). IEEE Trans Biomed Eng 55.
-        
+
         list: optional parameter describing the height of the array from the
         retinal surface in microns
         """
         r = np.sqrt((xg - self.x) ** 2 + (yg - self.y) ** 2)
         h=np.ones(r.shape)*self.h
         cspread = (alpha / (alpha + h** n)) # current values on the retina due to array being heigh
-        
+
         d=((r- self.radius)**2 + self.h**2)**.5 # actual distance from the electrode edge 
-        cspread[r > self.radius] = (alpha / 
-        (alpha + d[r > self.radius] ** n))
+        cspread[r > self.radius] = (alpha / (alpha + d[r > self.radius] ** n))
         return cspread
 
 #       the old code
@@ -113,7 +112,7 @@ class Electrode(object):
 #        cspread[r > self.radius] = (alpha / (alpha + (r[r > self.radius] -
 #                                             self.radius) ** n))
 #        return cspread
-#        
+
 
 class ElectrodeArray(object):
     """
@@ -133,9 +132,8 @@ class ElectrodeArray(object):
 
 
 def receptive_field(electrode, xg, yg, size):
-  
-# creates a map of the retina for each electrode
- # where it's 1 under the electrode, 0 elsewhere
+    # creates a map of the retina for each electrode
+    # where it's 1 under the electrode, 0 elsewhere
     rf = np.zeros(xg.shape)
     ind = np.where((xg > electrode.x-(size/2)) &
                    (xg < electrode.x+(size/2)) &
@@ -384,7 +382,7 @@ class Retina(object):
         ----------
         current_spread : the 2D spread map in retinal space
 
-	integrationtype : either 'dotproduct' or 'maxrule'
+        integrationtype : either 'dotproduct' or 'maxrule'
 
         Returns
         -------
@@ -405,13 +403,13 @@ class Retina(object):
                 print('pulse not defined')
 
         ecs = ecs / ecs.max()
-        
-        # this normalization is based on unit current on the retina producing 
+
+        # this normalization is based on unit current on the retina producing
         # a max response of 1 based on axonal integration.
-        # means that response magnitudes don't change as you increase the 
+        # means that response magnitudes don't change as you increase the
         # length of axonal integration or sampling of the retina
         # Doesn't affect normalization over time, or responses as a function
-        # of the anount of current, 
+        # of the anount of current,
 
         return ecs
 

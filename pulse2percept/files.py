@@ -10,30 +10,34 @@ Used instructions from here with modifications:
 http://adaptivesamples.com/how-to-install-ffmpeg-on-windows/
 
 written Ione Fine 7/2016
-""" 
+"""
 
+import os
 import subprocess
 import numpy as np
 from PIL import Image
 import scipy.io as sio
-        
+
+
 def savemoviefiles(filestr, data, path='savedImages/'):
     np.save(path+filestr, data) # save as npy
     sio.savemat(path+filestr+'.mat', dict(mov=data))  # save as matfile
     npy2movie(path+filestr+'.avi', data) # save as avi
 
 def npy2movie(filename, movie, rate=30):
- 
+    if os.name == 'nt':
+        ffmpeg_bin = 'ffmpeg.exe'
+    else:
+        ffmpeg_bin = 'ffmpeg'
 
-    cmdstring = ('ffmpeg.exe',
-             '-y',
-             '-r', '%d' % rate,
-             '-f','image2pipe',
-             '-vcodec', 'mjpeg',
-             '-i', 'pipe:', 
-             '-vcodec', 'libxvid',
-             filename
-             )
+    cmdstring = (ffmpeg_bin,
+                 '-y',
+                 '-r', '%d' % rate,
+                 '-f','image2pipe',
+                 '-vcodec', 'mjpeg',
+                 '-i', 'pipe:',
+                 '-vcodec', 'libxvid',
+                 filename)
     print(filename)
     p = subprocess.Popen(cmdstring, stdin=subprocess.PIPE, shell=False)
 
@@ -43,17 +47,18 @@ def npy2movie(filename, movie, rate=30):
     #p.communicate(im.tostring('jpeg','L'))
 
     p.stdin.close()
-    
+
+
 def scale(inarray,newmin=0, newmax=1):
-    '''Scales an image such that its lowest value attains newmin and 
-    it’s highest value attains newmax. 
+    '''Scales an image such that its lowest value attains newmin and
+    it’s highest value attains newmax.
     written by Ione Fine, based on code from Rick Anthony
     6/5/2015
     '''
 
     oldmin = inarray.min()
     oldmax = inarray.max()
-    
+
     delta = (newmax-newmin)/(oldmax-oldmin)
     outarray = delta*(inarray-oldmin) + newmin
     return outarray

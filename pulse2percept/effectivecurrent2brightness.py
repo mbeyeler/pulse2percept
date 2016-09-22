@@ -39,13 +39,17 @@ class TemporalModel(object):
 
         Parameters
         ----------
-        model : str {'Nanduri', 'Krishnan'}
+        model : str {'Nanduri', 'Krishnan', 'Horsager'}
             A string indicating which flavor of the model to use.
             Default: 'Nanduri'.
         ``Nanduri``
             Fast leaky integrator first, then charge accumulation.
         ``Krishnan``
             Charge accumulation first, then fast leaky integrator.
+        ``Horsager``
+            Use power nonlinearity instead of stationary nonlinearity
+        ``Horsager``
+            Use power nonlinearity instead of stationary nonlinearity..
         tsample : float
             Sampling time step (seconds). Default: 5e-6 s.
         tau1 : float
@@ -200,7 +204,7 @@ class TemporalModel(object):
         # This only applies in the 'Horsager' model for now.
         # In Horsager (2009), there was a power nonlinearity instead of the
         # stationary nonlinearity. The exponent `beta` had two values,
-        # depending on whether close to threshold or not. 
+        # depending on whether close to threshold or not.
         # For our purposes, we need a continuous value for `beta`, and judging
         # from the Nanduri data this function should decrease with increasing
         # amplitude. So we fit it with a decaying exponential as a function of
@@ -335,7 +339,7 @@ class TemporalModel(object):
         resp = self.fast_response(ecm.data - ca, dojit=dojit)
         resp = self.power_nonlinearity(resp)
         resp = self.slow_response(resp)
-        return utils.TimSeries(self.tsamlpe, resp)
+        return utils.TimeSeries(self.tsample, resp)
 
 
 def pulse2percept(temporal_model, ecs, retina, stimuli, rs, engine='joblib',
