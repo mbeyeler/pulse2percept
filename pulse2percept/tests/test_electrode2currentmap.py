@@ -4,6 +4,28 @@ import numpy.testing as npt
 
 import pulse2percept.electrode2currentmap as e2cm
 
+
+def test_get_pulse():
+    for pulse_type in ['cathodicfirst', 'anodicfirst']:
+        for pulse_dur in [0.25/1000, 0.45/1000, 0.65/1000]:
+            for interphase_dur in [0, 0.25/1000, 0.45/1000, 0.65/1000]:
+                for tsample in [5e-6, 1e-5, 5e-5]:
+                    # generate pulse
+                    pulse = e2cm.get_pulse(pulse_dur, tsample, interphase_dur,
+                                           pulse_type)
+
+                    # predicted length
+                    pulse_gap_dur = 2 * pulse_dur + interphase_dur
+
+                    # make sure length is correct
+                    npt.assert_equal(pulse.size, int(np.round(pulse_gap_dur /
+                                                              tsample)))
+
+                    # make sure amplitude is correct
+                    npt.assert_equal(pulse.max(), 1)
+                    npt.assert_equal(pulse.min(), -1)
+
+
 def test_TimeSeries():
     data_orig = np.zeros((10, 10, 1000))
     ts1 = e2cm.TimeSeries(1, data_orig)

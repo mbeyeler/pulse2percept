@@ -284,7 +284,7 @@ class Psycho2Pulsetrain(TimeSeries):
         if stimtype == 'pulsetrain':
             # Warning: using a non-integer number instead of an integer will
             # result in an error in the future
-            interpulsegap = np.zeros(int(1/freq/tsample) - len(pulse))
+            interpulsegap = np.zeros(int(np.round(1/freq/tsample)) - len(pulse))
             # interpulsegap = np.zeros(round((1/freq) / tsample) - len(pulse))
             ppt = []
             for j in range(0, int(np.ceil(dur * freq))):
