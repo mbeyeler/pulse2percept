@@ -265,3 +265,72 @@ def memory_usage():
         if status is not None:
             status.close()
     return result
+
+
+class CuFFTConvolve:
+    try:
+        import pycuda.autoinit
+        import pycuda.driver as cuda
+        import pycuda.gpuarray as gpuarray
+    except ImportError:
+        raise ImportError("You do not have pycuda installed.")
+
+    try:
+        import skcuda.fft as cu_fft
+    except ImportError:
+        raise ImportError("You do not have scikit-cuda installed.")
+
+    def __init__(self, in1shape, in2shape):
+        # try:
+        #     import pycuda.autoinit
+        # except ImportError:
+        #     e_s = "You do not have pycuda installed."
+        #     raise ImportError(e_s)
+
+        self.in1shape = in1shape
+        self.in2shape = in2shape
+        self.out_shape = in1shape + in2shape - 1
+
+        # Pre-allocate the zero-padding for the time-series of in1, in2
+        self.x1_gpu = self.gpuarray.zeros(self.out_shape, np.float32)
+        self.x2_gpu = self.gpuarray.zeros(self.out_shape, np.float32)
+
+        # Pre-allocate N//2+1 non-redundant FFT coefficients
+        self.f1_gpu = self.gpuarray.empty(self.out_shape // 2 + 1,
+                                          np.complex64)
+        self.f2_gpu = self.gpuarray.empty(self.out_shape // 2 + 1,
+                                          np.complex64)
+
+        # Set up a plan for FFT and iFFT (takes time)
+        self.plan_fft = self.cu_fft.Plan(self.out_shape, np.float32,
+                                         np.complex64)
+        self.plan_ifft = self.cu_fft.Plan(self.out_shape, np.complex64,
+                                          np.float32)
+
+        # Pre-allocate zero-padded output array
+        self.y_gpu = self.gpuarray.empty(self.out_shape, np.float32)
+
+    def cufftconvolve(self, in1, in2):
+        assert in1.shape[-1] == self.in1shape
+        assert in2.shape[-1] == self.in2shape
+
+        # Trick to minimize memory transfers:
+        # Instead of zero-padding in1, in2 and then copying the two large
+        # arrays from host to device, merely copy in1, in2 into the full
+        # pre-allocated array of zeros.
+        # Since in1shape, in2shape do not change, we don't have to worry about
+        # artifacts from previous method calls.
+        self.cuda.memcpy_htod(self.x1_gpu.gpudata, in1.astype(np.float32))
+        self.cuda.memcpy_htod(self.x2_gpu.gpudata, in2.astype(np.float32))
+
+        # Calculate the N//2+1 non-redundant FFT coefficients
+        self.cu_fft.fft(self.x1_gpu, self.f1_gpu, self.plan_fft)
+        self.cu_fft.fft(self.x2_gpu, self.f2_gpu, self.plan_fft)
+
+        # Normalize output product by np.sqrt(self.out_shape ** 2), then take
+        # the iFFT.
+        self.f1_gpu /= self.out_shape
+        self.cu_fft.ifft(self.f1_gpu * self.f2_gpu, self.y_gpu, self.plan_ifft)
+
+        # get() transfers the array from the device back to the host
+        return self.y_gpu.get()
