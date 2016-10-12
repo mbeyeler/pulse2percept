@@ -18,9 +18,9 @@ from pulse2percept import utils
 
 class TemporalModel(object):
 
-    def __init__(self, model='Nanduri', tsample=0.005/1000,
-                 tau1=42/1000, tau2=45.25/1000, tau3=26.25/1000, epsilon=8.73,
-                 asymptote=14, slope=3, shift=16):
+    def __init__(self, model='Nanduri', tsample=0.005 / 1000,
+                 tau1=0.42 / 1000, tau2=45.25 / 1000, tau3=26.25 / 1000,
+                 epsilon=8.73, asymptote=14, slope=3, shift=16):
         """(Updated) Perceptual Sensitivity Model.
 
         A model of temporal integration from retina pixels.

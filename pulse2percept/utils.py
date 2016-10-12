@@ -278,47 +278,100 @@ class CuFFTConvolve:
     try:
         import skcuda.fft as cu_fft
     except ImportError:
-        raise ImportError("You do not have scikit-cuda installed.")
+        raise ImportError("You do not have scikit-cuda (fft) installed.")
 
-    def __init__(self, in1shape, in2shape):
-        # try:
-        #     import pycuda.autoinit
-        # except ImportError:
-        #     e_s = "You do not have pycuda installed."
-        #     raise ImportError(e_s)
+    def __init__(self, in1size, in2size, mode='full'):
+        """Convolve two vectors using FFT on the GPU
 
-        self.in1shape = in1shape
-        self.in2shape = in2shape
-        self.out_shape = in1shape + in2shape - 1
+        Convolve two vectors (flat arrays) with shapes `in1size` and `in2size`
+        using the Fast Fourier Transform (FFT) method on the GPU, with the
+        output size determined by the `mode` argument.
+
+        This is generally much faster than `numpy.convolve` or even
+        `scipy.signal.fftconvolve` for large arrays, but can be slower when
+        only a few output values are needed, because GPUs have a large overhead
+        in terms of setup time and memory transfers.
+
+        The same `CuFFTConvolve` object can be used to convolve a number of
+        arrays, as long as the shape of these arrays remains unchanged.
+
+        Parameters
+        ----------
+        in1size : int
+            The number of elements in the first array.
+        in2size : int
+            The number of elements in the second array.
+        mode : str {'full'}
+            A string indicating the size of the output:
+
+            ``full``
+                The output is the full discrete linear convolution of the
+                inputs: in1size + in2size - 1. (Default)
+
+        """
+        self.in1size = in1size
+        self.in2size = in2size
+
+        if in1size <= 0 or in2size <= 0:  # empty arrays
+            raise ValueError("Array sizes must be non-negative scalars.")
+
+        # Only mode 'full' supported right now
+        if mode == 'full':
+            self.out_size = in1size + in2size - 1
+        else:
+            raise ValueError("Acceptable mode flags are 'full'.")
 
         # Pre-allocate the zero-padding for the time-series of in1, in2
-        self.x1_gpu = self.gpuarray.zeros(self.out_shape, np.float32)
-        self.x2_gpu = self.gpuarray.zeros(self.out_shape, np.float32)
+        self.x1_gpu = self.gpuarray.zeros(self.out_size, np.float32)
+        self.x2_gpu = self.gpuarray.zeros(self.out_size, np.float32)
 
         # Pre-allocate N//2+1 non-redundant FFT coefficients
-        self.f1_gpu = self.gpuarray.empty(self.out_shape // 2 + 1,
+        self.f1_gpu = self.gpuarray.empty(self.out_size // 2 + 1,
                                           np.complex64)
-        self.f2_gpu = self.gpuarray.empty(self.out_shape // 2 + 1,
+        self.f2_gpu = self.gpuarray.empty(self.out_size // 2 + 1,
                                           np.complex64)
 
         # Set up a plan for FFT and iFFT (takes time)
-        self.plan_fft = self.cu_fft.Plan(self.out_shape, np.float32,
+        self.plan_fft = self.cu_fft.Plan(self.out_size, np.float32,
                                          np.complex64)
-        self.plan_ifft = self.cu_fft.Plan(self.out_shape, np.complex64,
+        self.plan_ifft = self.cu_fft.Plan(self.out_size, np.complex64,
                                           np.float32)
 
         # Pre-allocate zero-padded output array
-        self.y_gpu = self.gpuarray.empty(self.out_shape, np.float32)
+        self.y_gpu = self.gpuarray.empty(self.out_size, np.float32)
 
     def cufftconvolve(self, in1, in2):
-        assert in1.shape[-1] == self.in1shape
-        assert in2.shape[-1] == self.in2shape
+        """Convolve two vectors using FFT on the GPU
+
+        Convolve `in1` with `in2` using FFT on the GPU, with the output size
+        determined by the mode flag.
+
+        Parameters
+        ----------
+        in1 : array
+            First input vector (1-dimensional array)
+        in2 : array
+            Second input vector (1-dimensional array)
+
+        Returns
+        -------
+        out : array
+            A vector (1-dimensional array) containing the discrete linear
+            convolution of `in1` with `in2`.
+
+        """
+        if in1.ndim != 1 or in1.size != self.in1size:
+            raise ValueError("Size of `in1` must be the same as in "
+                             "constructor.")
+        if in2.ndim != 1 or in2.size != self.in2size:
+            raise ValueError("Size of `in2` must be the same as in "
+                             "constructor.")
 
         # Trick to minimize memory transfers:
         # Instead of zero-padding in1, in2 and then copying the two large
         # arrays from host to device, merely copy in1, in2 into the full
         # pre-allocated array of zeros.
-        # Since in1shape, in2shape do not change, we don't have to worry about
+        # Since in1size, in2size do not change, we don't have to worry about
         # artifacts from previous method calls.
         self.cuda.memcpy_htod(self.x1_gpu.gpudata, in1.astype(np.float32))
         self.cuda.memcpy_htod(self.x2_gpu.gpudata, in2.astype(np.float32))
@@ -327,9 +380,9 @@ class CuFFTConvolve:
         self.cu_fft.fft(self.x1_gpu, self.f1_gpu, self.plan_fft)
         self.cu_fft.fft(self.x2_gpu, self.f2_gpu, self.plan_fft)
 
-        # Normalize output product by np.sqrt(self.out_shape ** 2), then take
+        # Normalize output product by np.sqrt(self.out_size ** 2), then take
         # the iFFT.
-        self.f1_gpu /= self.out_shape
+        self.f1_gpu /= self.out_size
         self.cu_fft.ifft(self.f1_gpu * self.f2_gpu, self.y_gpu, self.plan_ifft)
 
         # get() transfers the array from the device back to the host

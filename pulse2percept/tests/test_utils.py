@@ -1,6 +1,7 @@
 from pulse2percept import utils
 import numpy as np
 import numpy.testing as npt
+from nose import SkipTest
 
 
 def test_Parameters():
@@ -63,11 +64,43 @@ def test_parfor():
 
 
 def test_CuFFTConvolve():
-    from scipy.signal import fftconvolve
+    try:
+        from scipy.signal import fftconvolve
+        import pycuda.autoinit
+        import skcuda.fft
+    except ImportError:
+        raise SkipTest("Missing either scipy's fftconvolve, PyCUDA, or "
+                       "scikit-cuda.")
 
-    # Testing cufftconvolve with different input. Precision will vary depending
-    # on array length and GPU architecture (some GPUs have more rounding
-    # errors)
+    ## ---- Step 1: Constructor and setup ---------------------------------- ##
+    # Only supported mode is 'full' so far
+    npt.assert_raises(ValueError, utils.CuFFTConvolve, 10, 10, 'same')
+    npt.assert_raises(ValueError, utils.CuFFTConvolve, 10, 10, 'valid')
+    npt.assert_raises(ValueError, utils.CuFFTConvolve, 10, 10, 'meow')
+
+    # Array shapes must be valid
+    npt.assert_raises(ValueError, utils.CuFFTConvolve, 0, 2)
+    npt.assert_raises(ValueError, utils.CuFFTConvolve, 3, 0)
+    npt.assert_raises(ValueError, utils.CuFFTConvolve, -1, 2)
+    npt.assert_raises(ValueError, utils.CuFFTConvolve, 2, -1)
+
+    # Array shapes cannot change from constructor to method call
+    cu = utils.CuFFTConvolve(10, 10)
+    npt.assert_raises(ValueError, cu.cufftconvolve, np.ones(10), np.ones(11))
+    npt.assert_raises(ValueError, cu.cufftconvolve, np.ones(9), np.ones(10))
+
+    # Output size varies with mode
+    for in1size in [2, 12, 1000]:
+        for in2size in [5, 20, 500]:
+            for mode in ['full']:
+                cu = utils.CuFFTConvolve(in1size, in2size, mode)
+
+                if mode == 'full':
+                    npt.assert_equal(cu.out_size, in1size + in2size - 1)
+
+    ## ---- Step 2: Test cufftconvolve with different (realistic) input ---- ##
+    # Precision will vary depending on array length and GPU architecture (some
+    # GPUs have more rounding errors)
     in1 = []      # first input signal
     in2 = []      # second input signal
     decimal = []  # precision (almost equal to how many decimals)
@@ -100,7 +133,7 @@ def test_CuFFTConvolve():
         y_cpu = fftconvolve(x1, x2)
 
         # our cuda version:
-        cu = utils.CuFFTConvolve(x1.shape[-1], x2.shape[-1])
+        cu = utils.CuFFTConvolve(x1.size, x2.size, mode='full')
         y_gpu = cu.cufftconvolve(x1, x2)
 
         # Make sure they're almost equal
