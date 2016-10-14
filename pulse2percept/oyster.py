@@ -173,7 +173,7 @@ def makeAxonMap(xg, yg, axon_lambda=1, nCells=500, nR=801, min_weight=.001,
             nearest_yg =yg[nearest_yg_id,0]
 
             #if the position along the axon has moved to a new pixel, and the weight isn't too small...
-            if nearest_xg != cur_xg or nearest_yg != cur_yg and weight>min_weight:
+            if (nearest_xg != cur_xg or nearest_yg != cur_yg) and weight>min_weight:
                 #update the current pixel location
                 cur_xg = nearest_xg
                 cur_yg = nearest_yg
