@@ -368,6 +368,7 @@ class Retina(object):
                      sampling=[sampling],
                      axon_lambda=[axon_lambda])
 
+        self.axon_lambda = axon_lambda
         self.sampling = sampling
         self.axon_id = axon_id
         self.axon_weight = axon_weight
@@ -390,8 +391,8 @@ class Retina(object):
         current map, where each pixel is the dot product of the pixel values in
         ecm along the pixels in the list in axon_map, weighted by the weights
         axon map.
-        """ 
-        ecs = np.zeros(current_spread.shape)
+        """
+        ecs = np.zeros_like(current_spread) 
         for id in range(0, len(current_spread.flat)):
             if integrationtype is 'dotproduct':
                 ecs.flat[id] = np.dot(current_spread.flat[self.axon_id[id]],
