@@ -55,7 +55,7 @@ def gamma(n, tau, t):
     if flag == 1:
         y = np.concatenate([[0], y])
 
-    y = y / (np.sum(y) * (t[1] - t[0]))
+    y = y / (np.sum(y) * (t[1] - t[0]))  # normalizes so area doesn't change
 
     return y
 
@@ -415,9 +415,10 @@ class Retina(object):
 
         # normalize so the response under the electrode in the ecs map
         # is equal to cs
-        maxloc = np.where(cs == np.max(cs))
-        scfac = np.max(cs) / ecs[maxloc[0][0], maxloc[1][0]]
+        maxloc = np.where(cs == np.max(cs))[0]
+        scfac = np.max(cs) / ecs[maxloc[0], maxloc[1]]
         ecs = ecs * scfac
+        ecs = ecs / ecs.max()
 
         # this normalization is based on unit current on the retina producing
         # a max response of 1 based on axonal integration.
@@ -428,7 +429,8 @@ class Retina(object):
 
         return ecs
 
-    def electrode_ecs(self, electrode_array, alpha=14000, n=1.69, integrationtype='maxrule'):
+    def electrode_ecs(self, electrode_array, alpha=14000, n=1.69,
+                      integrationtype='maxrule'):
         """
         Gather current spread and effective current spread for each electrode
 
