@@ -103,7 +103,7 @@ class TemporalModel(object):
         self.gamma2 = e2cm.gamma(1, self.tau2, t)
 
         # gamma3 is used to calculate the slow response
-        t = np.arange(0, 8 * self.tau3, self.tsample)
+        t = np.arange(0, 10 * self.tau3, self.tsample)
         self.gamma3 = e2cm.gamma(3, self.tau3, t)
 
     def fast_response(self, b1, dojit=True):
@@ -195,7 +195,7 @@ class TemporalModel(object):
         Conversion to TimeSeries is avoided for the sake of speedup.
         """
         # rectify: np.maximum seems to be faster than np.where
-        b3 = np.maximum(0, b3)
+        b3 = np.maximum(0, -b3)
 
         # use expit (logistic) function for speedup
         b3max = b3.max()
@@ -304,7 +304,7 @@ class TemporalModel(object):
         """
         resp = self.fast_response(ecm.data, dojit=dojit)
         ca = self.charge_accumulation(ecm.data)
-        resp = self.stationary_nonlinearity(resp - ca)
+        resp = self.stationary_nonlinearity(resp + ca)
         resp = self.slow_response(resp)
         return utils.TimeSeries(self.tsample, resp * self.scale_output)
 
@@ -327,7 +327,7 @@ class TemporalModel(object):
             brightness of a particular location in space, B(r).
         """
         ca = self.charge_accumulation(ecm.data)
-        resp = self.fast_response(ecm.data - ca, dojit=dojit)
+        resp = self.fast_response(ecm.data + ca, dojit=dojit)
         resp = self.stationary_nonlinearity(resp)
         resp = self.slow_response(resp)
         return utils.TimeSeries(self.tsample, resp * self.scale_output)
@@ -340,7 +340,7 @@ class TemporalModel(object):
         amplitude. Fit to Nanduri data.
         """
         ca = self.charge_accumulation(ecm.data)
-        resp = self.fast_response(ecm.data - ca, dojit=dojit)
+        resp = self.fast_response(ecm.data + ca, dojit=dojit)
         resp = self.power_nonlinearity(resp)
         resp = self.slow_response(resp)
         return utils.TimeSeries(self.tsample, resp * self.scale_output)
