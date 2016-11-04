@@ -383,7 +383,7 @@ class Retina(object):
         self.axon_id = axon_id
         self.axon_weight = axon_weight
 
-    def cm2ecm(self, cs, integrationtype):
+    def cm2ecm(self, cs, integrationtype, normalizationtype):
         """
 
         Converts a current spread map to an 'effective' current spread map, by
@@ -394,6 +394,8 @@ class Retina(object):
         cs : the 2D spread map in retinal space
 
         integrationtype : either 'dotproduct' or 'maxrule'
+
+        normalizationtype : 'maxcs', 'area'
 
         Returns
         -------
@@ -411,26 +413,24 @@ class Retina(object):
                 ecs.flat[id] = np.max(np.multiply(cs.flat[self.axon_id[id]],
                                                   self.axon_weight[id]))
             else:
-                print('pulse not defined')
+                raise ValueError("Invalid integration type")
 
-        # normalize so the response under the electrode in the ecs map
-        # is equal to cs
-        maxloc = np.where(cs == np.max(cs))[0]
-        scfac = np.max(cs) / ecs[maxloc[0], maxloc[1]]
-        ecs = ecs * scfac
-        ecs = ecs / ecs.max()
-
-        # this normalization is based on unit current on the retina producing
-        # a max response of 1 based on axonal integration.
-        # means that response magnitudes don't change as you increase the
-        # length of axonal integration or sampling of the retina
-        # Doesn't affect normalization over time, or responses as a function
-        # of the anount of current,
+        if normalizationtype is 'maxcs':
+            # normalize so that the response under the electrode in the ecs
+            # map is equal to cs
+            maxloc = np.argmax(cs)
+            scfac = np.max(cs) / ecs.flat[maxloc]
+            ecs *= scfac
+        elif normalizationtype is 'area':
+            scfac = np.sum(cs) / np.sum(ecs)
+            ecs *= scfac
+        else:
+            raise ValueError("Invalid normalization type")
 
         return ecs
 
     def electrode_ecs(self, electrode_array, alpha=14000, n=1.69,
-                      integrationtype='maxrule'):
+                      integrationtype='maxrule', normalizationtype='maxcs'):
         """
         Gather current spread and effective current spread for each electrode
 
@@ -461,7 +461,8 @@ class Retina(object):
         for i, e in enumerate(electrode_array.electrodes):
             cs[..., i] = e.current_spread(self.gridx, self.gridy,
                                           alpha=alpha, n=n)
-            ecs[..., i] = self.cm2ecm(cs[..., i], integrationtype)
+            ecs[..., i] = self.cm2ecm(cs[..., i], integrationtype,
+                                      normalizationtype)
 
         return ecs, cs
 
