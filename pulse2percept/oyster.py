@@ -75,7 +75,7 @@ def jansonius(nCells, nR, center=np.array([15,2]),
 
     # Find where the fibers cross the horizontal meridian
     cross = np.zeros([nR,nCells])
-    cross[sup] = yprime[sup]<0
+    cross[sup] = yprime[sup]<=0
     cross[~sup] = yprime[~sup]>0
 
     # Set Nans to axon paths after crossing horizontal meridian

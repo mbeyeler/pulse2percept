@@ -318,7 +318,8 @@ class Retina(object):
     """
 
     def __init__(self, xlo=-1000, xhi=1000, ylo=-1000, yhi=1000,
-                 sampling=25, axon_map=None, axon_lambda=2):
+                 sampling=25, axon_map=None, axon_lambda=2,
+		 rot=0*np.pi/180):
         """
         Initialize a retina
 
@@ -358,6 +359,11 @@ class Retina(object):
             assert yhi == yhi_am
             assert sampling_am == sampling
             assert axon_lambda_am == axon_lambda
+            if 'rot' in axon_map:
+                rot_am = axon_map['rot']
+                assert rot == rot_am
+            else:
+                assert rot == 0 
 
         else:
             if axon_map is None:
@@ -365,7 +371,8 @@ class Retina(object):
             print("Can't find file %s, generating" % axon_map)
             axon_id, axon_weight = oyster.makeAxonMap(micron2deg(self.gridx),
                                                       micron2deg(self.gridy),
-                                                      axon_lambda=axon_lambda)
+                                                      axon_lambda=axon_lambda,
+                                                      rot=rot)
             # Save the variables, together with metadata about the grid:
             fname = axon_map
             np.savez(fname,
@@ -376,7 +383,8 @@ class Retina(object):
                      ylo=[ylo],
                      yhi=[yhi],
                      sampling=[sampling],
-                     axon_lambda=[axon_lambda])
+                     axon_lambda=[axon_lambda],
+                     rot=[rot])
 
         self.axon_lambda = axon_lambda
         self.sampling = sampling
