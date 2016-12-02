@@ -268,20 +268,7 @@ class TemporalModel(object):
         resp = respC + 0.5 * respA
         resp = self.stationary_nonlinearity(resp)
         resp = self.slow_response(resp)
-        return utils.TimeSeries(self.tsample, resp * self.scale_output)
-
-    def cascade_horsager(self, ecm, dojit):
-        """Model cascade according to Horsager et al. (2009).
-
-        Power nonlinearity instead of stationary nonlinearity.
-        Exponent `beta` is a decaying exponential as a function of max
-        amplitude. Fit to Nanduri data.
-        """
-        ca = self.charge_accumulation(ecm.data)
-        resp = self.fast_response(ecm.data - ca, dojit=dojit)
-        resp = self.power_nonlinearity(resp)
-        resp = self.slow_response(resp)
-        return utils.TimeSeries(self.tsample, resp * self.scale_output)
+        return utils.TimeSeries(self.tsample, resp * self.scale_slow)
 
 
 def pulse2percept(tm, ecs, retina, ptrain, rsample, dolayer,
