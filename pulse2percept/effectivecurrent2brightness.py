@@ -232,7 +232,7 @@ class TemporalModel(object):
         resp = respC + 0.5 * respA
         resp = self.stationary_nonlinearity(resp)
         resp = self.slow_response(resp)
-        return utils.TimeSeries(self.tsample, resp * self.scale_slow)
+        return utils.TimeSeries(self.tsample, resp)
 
 
 def pulse2percept(tm, ecs, retina, ptrain, rsample, dolayer,
