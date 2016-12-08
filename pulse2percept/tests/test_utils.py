@@ -26,7 +26,6 @@ def test_sparseconv():
 
     # time vector for impulse response (shorter)
     tt = t[t < .1]
-    ntt = len(tt)
 
     # impulse reponse (kernel)
     G = np.exp(-tt / .005)
