@@ -310,8 +310,8 @@ def pulse2percept(stim, implant, tm=None, retina=None,
     Stimulate a single-electrode array:
     >>> implant = e2cm.ElectrodeArray('subretinal', 0, 0, 0, 0)
     >>> stim = e2cm.Psycho2Pulsetrain(tsample=5e-6, freq=50, amp=20)
-    >>> resp = pulse2percept(stim, implant) # doctest: +ELLIPSIS
-    ...
+    >>> resp = pulse2percept(stim, implant)
+    File '../retina_s25_l2.0_rot0.0_1000x1000.npz' doesn't exist or has outdated parameter values, generating...  # noqa
 
     Stimulate a single electrode ('C3') of an Argus I array centered on the
     fovea:
