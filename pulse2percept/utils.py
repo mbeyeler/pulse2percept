@@ -257,28 +257,6 @@ def mov2npy(movie_file, out_file):
     np.save(out_file, frames)
 
 
-def memory_usage():
-    """Memory usage of the current process in kilobytes.
-
-    This works only on systems with a /proc file system
-    (like Linux).
-    http://stackoverflow.com/questions/897941/python-equivalent-of-phps-memory-get-usage/7669279
-    """
-    status = None
-    result = {'peak': 0, 'rss': 0}
-    try:
-        status = open('/proc/self/status')
-        for line in status:
-            parts = line.split()
-            key = parts[0][2:-1].lower()
-            if key in result:
-                result[key] = int(parts[1])
-    finally:
-        if status is not None:
-            status.close()
-    return result
-
-
 class CuFFTConvolve:
     try:
         import pycuda.autoinit
@@ -292,7 +270,7 @@ class CuFFTConvolve:
     except ImportError:
         raise ImportError("You do not have scikit-cuda (fft) installed.")
 
-    def __init__(self, in1size, in2size, mode='full'):
+    def __init__(self, in1size, in2size, mode='full', stream=None):
         """Convolve two vectors using FFT on the GPU
 
         Convolve two vectors (flat arrays) with shapes `in1size` and `in2size`
@@ -345,14 +323,26 @@ class CuFFTConvolve:
 
         # Set up a plan for FFT and iFFT (takes time)
         self.plan_fft = self.cu_fft.Plan(self.out_size, np.float32,
-                                         np.complex64)
+                                         np.complex64, stream=stream)
         self.plan_ifft = self.cu_fft.Plan(self.out_size, np.complex64,
-                                          np.float32)
+                                          np.float32, stream=stream)
 
         # Pre-allocate zero-padded output array
         self.y_gpu = self.gpuarray.empty(self.out_size, np.float32)
 
-    def cufftconvolve(self, in1, in2):
+        self.stream = stream
+        self.start = self.cuda.Event()
+        self.stop = self.cuda.Event()
+
+    def allocate_in2(self, in2):
+        if in2.ndim != 1 or in2.size != self.in2size:
+            raise ValueError("Size of `in2` must be the same as in "
+                             "constructor.")
+
+        # Pre-allocate one of the arrays on the GPU
+        self.cuda.memcpy_htod(self.x2_gpu.gpudata, in2.astype(np.float32))
+
+    def cufftconvolve(self, in1, in2=None, dtoh=True):
         """Convolve two vectors using FFT on the GPU
 
         Convolve `in1` with `in2` using FFT on the GPU, with the output size
@@ -375,9 +365,13 @@ class CuFFTConvolve:
         if in1.ndim != 1 or in1.size != self.in1size:
             raise ValueError("Size of `in1` must be the same as in "
                              "constructor.")
-        if in2.ndim != 1 or in2.size != self.in2size:
-            raise ValueError("Size of `in2` must be the same as in "
-                             "constructor.")
+
+        if in2 is not None:
+            if in2.ndim != 1 or in2.size != self.in2size:
+                raise ValueError("Size of `in2` must be the same as in "
+                                 "constructor.")
+
+        self.start.record(self.stream)
 
         # Trick to minimize memory transfers:
         # Instead of zero-padding in1, in2 and then copying the two large
@@ -386,7 +380,8 @@ class CuFFTConvolve:
         # Since in1size, in2size do not change, we don't have to worry about
         # artifacts from previous method calls.
         self.cuda.memcpy_htod(self.x1_gpu.gpudata, in1.astype(np.float32))
-        self.cuda.memcpy_htod(self.x2_gpu.gpudata, in2.astype(np.float32))
+        if in2 is not None:
+            self.cuda.memcpy_htod(self.x2_gpu.gpudata, in2.astype(np.float32))
 
         # Calculate the N//2+1 non-redundant FFT coefficients
         self.cu_fft.fft(self.x1_gpu, self.f1_gpu, self.plan_fft)
@@ -397,5 +392,11 @@ class CuFFTConvolve:
         self.f1_gpu /= self.out_size
         self.cu_fft.ifft(self.f1_gpu * self.f2_gpu, self.y_gpu, self.plan_ifft)
 
-        # get() transfers the array from the device back to the host
-        return self.y_gpu.get()
+        self.stop.record(self.stream)
+
+        if dtoh:
+            # get() transfers the array from the device back to the host
+            return self.y_gpu.get()
+        else:
+            # Return GPU pointer
+            return self.y_gpu

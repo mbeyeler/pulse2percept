@@ -98,6 +98,9 @@ class TemporalModel(object):
         t = np.arange(0, 10 * self.tau_slow, self.tsample)
         self.gamma_slow = e2cm.gamma(3, self.tau_slow, t)
 
+        self.cu_slow = None
+        self.cu_fast = None
+
     def fast_response(self, b1, gamma, dojit=True, usefft=False):
         """Fast response function (Box 2) for the bipolar layer
 
@@ -127,7 +130,12 @@ class TemporalModel(object):
         The output is not converted to a TimeSeries object for speedup.
         """
         if usefft:  # In Krishnan model, b1 is no longer sparse (run FFT)
-            conv = self.tsample * fftconvolve(b1, gamma, mode='full')
+            if self.cu_fast is None:
+                self.cu_fast = utils.CuFFTConvolve(b1.size, gamma.size)
+
+            conv = self.cu_fast.cufftconvolve(b1, gamma)
+
+            # conv = self.tsample * fftconvolve(b1, gamma, mode='full')
         else:
             conv = self.tsample * utils.sparseconv(gamma, b1,
                                                    mode='full', dojit=dojit)
@@ -192,9 +200,14 @@ class TemporalModel(object):
 
         Conversion to TimeSeries is avoided for the sake of speedup.
         """
+        if self.cu_slow is None:
+            self.cu_slow = utils.CuFFTConvolve(b4.size, self.gamma_slow.size)
+
+        conv = self.cu_slow.cufftconvolve(b4, self.gamma_slow)
+
         # No need to zero-pad: fftconvolve already takes care of optimal
         # kernel/data size
-        conv = fftconvolve(b4, self.gamma_slow, mode='full')
+        # conv = fftconvolve(b4, self.gamma_slow, mode='full')
 
         # Cut off the tail of the convolution to make the output signal match
         # the dimensions of the input signal.

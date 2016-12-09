@@ -73,20 +73,29 @@ def test_CuFFTConvolve():
 
     ## ---- Step 1: Constructor and setup ---------------------------------- ##
     # Only supported mode is 'full' so far
-    npt.assert_raises(ValueError, utils.CuFFTConvolve, 10, 10, 'same')
-    npt.assert_raises(ValueError, utils.CuFFTConvolve, 10, 10, 'valid')
-    npt.assert_raises(ValueError, utils.CuFFTConvolve, 10, 10, 'meow')
+    with pytest.raises(ValueError):
+        utils.CuFFTConvolve(10, 10, 'same')
+    with pytest.raises(ValueError):
+        utils.CuFFTConvolve(10, 10, 'valid')
+    with pytest.raises(ValueError):
+        utils.CuFFTConvolve(10, 10, 'whatever')
 
     # Array shapes must be valid
-    npt.assert_raises(ValueError, utils.CuFFTConvolve, 0, 2)
-    npt.assert_raises(ValueError, utils.CuFFTConvolve, 3, 0)
-    npt.assert_raises(ValueError, utils.CuFFTConvolve, -1, 2)
-    npt.assert_raises(ValueError, utils.CuFFTConvolve, 2, -1)
+    with pytest.raises(ValueError):
+        utils.CuFFTConvolve(0, 2)
+    with pytest.raises(ValueError):
+        utils.CuFFTConvolve(3, 0)
+    with pytest.raises(ValueError):
+        utils.CuFFTConvolve(-1, 2)
+    with pytest.raises(ValueError):
+        utils.CuFFTConvolve(2, -1)
 
     # Array shapes cannot change from constructor to method call
     cu = utils.CuFFTConvolve(10, 10)
-    npt.assert_raises(ValueError, cu.cufftconvolve, np.ones(10), np.ones(11))
-    npt.assert_raises(ValueError, cu.cufftconvolve, np.ones(9), np.ones(10))
+    with pytest.raises(ValueError):
+        utils.CuFFTConvolve(np.ones(9), np.ones(10))
+    with pytest.raises(ValueError):
+        utils.CuFFTConvolve(np.ones(10), np.ones(11))
 
     # Output size varies with mode
     for in1size in [2, 12, 1000]:
