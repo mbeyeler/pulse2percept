@@ -12,7 +12,6 @@ http://adaptivesamples.com/how-to-install-ffmpeg-on-windows/
 written Ione Fine 7/2016
 """
 
-import os
 import subprocess
 import numpy as np
 import scipy.io as sio

@@ -310,13 +310,13 @@ def pulse2percept(stim, implant, tm=None, retina=None,
     Stimulate a single-electrode array:
     >>> implant = e2cm.ElectrodeArray('subretinal', 0, 0, 0, 0)
     >>> stim = e2cm.Psycho2Pulsetrain(tsample=5e-6, freq=50, amp=20)
-    >>> pulse2percept(stim, implant)
+    >>> resp = pulse2percept(stim, implant)
 
     Stimulate a single electrode ('C3') of an Argus I array centered on the
     fovea:
     >>> implant = e2cm.ArgusI()
     >>> stim = {'C3': e2cm.Psycho2Pulsetrain(tsample=5e-6, freq=50, amp=20)}
-    >>> ec2b.pulse2percept(stim, implant)
+    >>> resp = pulse2percept(stim, implant)
     """
     # Check type to avoid backwards compatibility issues
     if not isinstance(implant, e2cm.ElectrodeArray):
@@ -366,6 +366,8 @@ def pulse2percept(stim, implant, tm=None, retina=None,
             else:
                 ecs_list.append(ecs[yy, xx])
                 idx_list.append([yy, xx])
+
+    print("tol=%f, %d out of %d pixels selected" % (tol, len(ecs_list), np.prod(retina.gridx.shape[:2])))
 
     # Apply charge accumulation
     for i, p in enumerate(pt_list):
