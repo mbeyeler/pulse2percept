@@ -10,7 +10,7 @@ from scipy import interpolate
 from scipy.misc import factorial
 
 from pulse2percept import oyster
-from pulse2percept.utils import TimeSeries
+from pulse2percept.utils import TimeSeries, randomly
 
 
 def micron2deg(micron):
@@ -91,6 +91,26 @@ class Electrode(object):
         name : string
             Electrode name
 
+        """
+        assert radius >= 0
+        assert height >= 0
+
+        self.etype = etype
+        self.radius = radius
+        self.x_center = x_center
+        self.y_center = y_center
+        self.name = name
+        self.set_height(height)
+
+    def set_height(self, height):
+        """Sets the electrode-to-retina distance
+
+        This function sets the electrode-to-retina distance according to
+        `height`. For an epiretinal device, we calculate the distance to
+        the ganglion cell layer (layer thickness depends on retinal location).
+        For a subretinal device, we calculate the distance to the bipolar
+        layer (layer thickness again depends on retinal location).
+
         Estimates of layer thickness based on:
         LoDuca et al. Am J. Ophthalmology 2011
         Thickness Mapping of Retinal Layers by Spectral Domain Optical
@@ -116,18 +136,9 @@ class Electrode(object):
         So for an epiretinal array the bipolar layer is L1+L2+(.5*L3).
 
         """
-        assert radius >= 0
-        assert height >= 0
+        fovdist = np.sqrt(self.x_center ** 2 + self.y_center ** 2)
 
-        self.etype = etype
-        self.radius = radius
-        self.x_center = x_center
-        self.y_center = y_center
-        self.name = name
-
-        fovdist = np.sqrt(x_center ** 2 + y_center ** 2)
-
-        if etype == 'epiretinal':
+        if self.etype == 'epiretinal':
             self.h_nfl = height
             if fovdist <= 600:
                 self.h_inl = height + 71.5
@@ -135,7 +146,7 @@ class Electrode(object):
                 self.h_inl = height + 139.75
             elif fovdist > 1550:
                 self.h_inl = height + 119.075
-        elif etype == 'subretinal':
+        elif self.etype == 'subretinal':
             if fovdist <= 600:
                 self.h_inl = height + 23 / 2
                 self.h_nfl = height + 83
@@ -247,8 +258,6 @@ class ElectrodeArray(object):
         Get access to the second electrode in the array:
         >>> my_electrode = implant2[1]
 
-
-
         """
         # Make it so the constructor can accept either floats, lists, or
         # numpy arrays, and `zip` works regardless.
@@ -265,7 +274,6 @@ class ElectrodeArray(object):
 
         self.etype = etype
         self.num_electrodes = names.size
-        self.names = names
         self.electrodes = []
         for r, x, y, h, n in zip(radii, xs, ys, hs, names):
             self.electrodes.append(Electrode(etype, r, x, y, h, n))
@@ -292,7 +300,6 @@ class ElectrodeArray(object):
             try:
                 return self.electrodes[self.get_index(item)]
             except:
-                print("None")
                 return None
 
     def get_index(self, name):
@@ -311,18 +318,21 @@ class ElectrodeArray(object):
         -------
         A valid electrode index or None.
         """
-        try:
-            # Is `name` a valid electrode name?
-            idx = self.names.tolist().index(name)
-            return idx
-        except:
-            # Else: `name` could not be found.
-            return None
+        # Is `name` a valid electrode name?
+        # Iterate through electrodes to find a matching name. Shuffle list
+        # to reduce time complexity of average lookup.
+        for idx, electrode in randomly(enumerate(self.electrodes)):
+            if electrode.name == name:
+                return idx
+
+        # Worst case O(n): name could not be found.
+        return None
 
 
 class ArgusI(ElectrodeArray):
 
-    def __init__(self, x_center=0, y_center=0, h=0, rot=0 * np.pi / 180):
+    def __init__(self, x_center=0, y_center=0, h=0, rot=0 * np.pi / 180,
+                 use_legacy_names=False):
         """Create an ArgusI array on the retina
 
         This function creates an ArgusI array and places it on the retina
@@ -339,6 +349,7 @@ class ArgusI(ElectrodeArray):
         -->x    A4 B4 C4 D4                     520 260 520 260
 
         Electrode order is: A1, B1, C1, D1, A2, B2, ..., D4.
+        If `use_legacy_names` is True, electrode order is: L6, L2, M8, M4, ...
         An electrode can be addressed by index (integer) or name.
 
         Parameters
@@ -370,9 +381,17 @@ class ArgusI(ElectrodeArray):
         r_arr = np.concatenate((r_arr, r_arr[::-1], r_arr, r_arr[::-1]),
                                axis=0)
 
-        # Standard Argus I names: A1, B1, C1, D1, A1, B2, ..., D4
-        # Shortcut: Use `chr` to go from int to char
-        names = [chr(i) + str(j) for j in range(1, 5) for i in range(65, 69)]
+        if use_legacy_names:
+            # Legacy Argus I names
+            names = ['L6', 'L2', 'M8', 'M4',
+                     'L5', 'L1', 'M7', 'M3',
+                     'L8', 'L4', 'M6', 'M2',
+                     'L7', 'L3', 'M5', 'M1']
+        else:
+            # Standard Argus I names: A1, B1, C1, D1, A1, B2, ..., D4
+            # Shortcut: Use `chr` to go from int to char
+            names = [chr(i) + str(j) for j in range(1, 5)
+                     for i in range(65, 69)]
 
         if isinstance(h, list):
             h_arr = np.array(h).flatten()
@@ -404,7 +423,6 @@ class ArgusI(ElectrodeArray):
 
         self.etype = 'epiretinal'
         self.num_electrodes = len(names)
-        self.names = np.array(names, dtype=np.str)
         self.electrodes = []
         for r, x, y, h, n in zip(r_arr, x_arr, y_arr, h_arr, names):
             self.electrodes.append(Electrode(self.etype, r, x, y, h, n))
@@ -494,7 +512,6 @@ class ArgusII(ElectrodeArray):
 
         self.etype = 'epiretinal'
         self.num_electrodes = len(names)
-        self.names = np.array(names, dtype=np.str)
         self.electrodes = []
         for r, x, y, h, n in zip(r_arr, x_arr, y_arr, h_arr, names):
             self.electrodes.append(Electrode(self.etype, r, x, y, h, n))
@@ -555,8 +572,8 @@ def get_pulse(pulse_dur, tsample, interphase_dur, pulsetype):
         anodic-first pulse has the positive phase first.
 
     """
-    on = np.ones(round(pulse_dur / tsample))
-    gap = np.zeros(round(interphase_dur / tsample))
+    on = np.ones(int(round(pulse_dur / tsample)))
+    gap = np.zeros(int(round(interphase_dur / tsample)))
     off = -1 * on
     if pulsetype == 'cathodicfirst':
         # cathodicfirst has negative current first
@@ -593,7 +610,7 @@ class Movie2Pulsetrain(TimeSeries):
         # set up the sequence
         dur = rflum.shape[-1] / fps
         if stimtype == 'pulsetrain':
-            interpulsegap = np.zeros(round((1.0 / freq) / tsample) -
+            interpulsegap = np.zeros(int(round((1.0 / freq) / tsample)) -
                                      len(pulse))
             ppt = []
             for j in range(0, int(np.ceil(dur * freq))):
@@ -717,7 +734,7 @@ class Retina(object):
 
     def __init__(self, xlo=-1000, xhi=1000, ylo=-1000, yhi=1000,
                  sampling=25, axon_lambda=2.0, rot=0 * np.pi / 180,
-                 loadpath='../', save_data=True):
+                 loadpath='../', save_data=True, verbose=True):
         """Generates a retina
 
         This function generates the coordinate system for the retina
@@ -744,10 +761,13 @@ class Retina(object):
             Relative path where to look for existing retina file.
             Default: '../'
         save_data : bool
-            Whether to save the data to a new retina file (True) or not
+            Flag whether to save the data to a new retina file (True) or not
             (False). The file name is automatically generated from all
             specified input arguments.
             Default: True.
+        verbose : bool
+             Flag whether to produce output (True) or suppress it (False).
+             Default: True.
         """
         # Include endpoints in meshgrid
         num_x = int((xhi - xlo) / sampling + 1)
@@ -804,9 +824,10 @@ class Retina(object):
 
         # At this point we know whether we need to generate a new retina:
         if need_new_retina:
-            info_str = "File '%s' doesn't exist " % filename
-            info_str += "or has outdated parameter values, generating..."
-            print(info_str)
+            if verbose:
+                info_str = "File '%s' doesn't exist " % filename
+                info_str += "or has outdated parameter values, generating..."
+                print(info_str)
             jan_x, jan_y = oyster.jansonius(rot=rot)
             axon_id, axon_weight = oyster.makeAxonMap(micron2deg(self.gridx),
                                                       micron2deg(self.gridy),
