@@ -370,7 +370,9 @@ def pulse2percept(stim, implant, tm=None, retina=None,
                 ecs_list.append(ecs[yy, xx])
                 idx_list.append([yy, xx])
 
-    print("tol=%f, %d out of %d pixels selected" % (tol, len(ecs_list), np.prod(retina.gridx.shape[:2])))
+    if verbose:
+        print("tol=%f, %d/%d pixels" % (tol, len(ecs_list),
+                                        np.prod(retina.gridx.shape[:2])))
 
     # Apply charge accumulation
     for i, p in enumerate(pt_list):

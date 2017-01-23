@@ -161,6 +161,9 @@ class Electrode(object):
             e_s += "'subretinal'."
             raise ValueError(e_s)
 
+        # FIXME: Try without these added terms...
+        # self.h_nfl = height
+
     def current_spread(self, xg, yg, layer, alpha=14000, n=1.69):
         """
 
