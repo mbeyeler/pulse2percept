@@ -620,38 +620,84 @@ def retinalmovie2electrodtimeseries(rf, movie):
     return rflum
 
 
-def get_pulse(pulse_dur, tsample, interphase_dur, pulsetype):
+def get_monophasic_pulse(ptype, pdur, tsample, delay_dur=0, stim_dur=None):
+    """Returns a monophasic pulse.
+
+    Parameters
+    ----------
+    ptype : {'anodic', 'cathodic'}
+        Pulse type. Anodic pulses have positive current amplitude, cathodic
+        pulses have negative amplitude.
+    pdur : float
+        Pulse duration (s).
+    tsample : float
+        Sampling time step (s).
+    delay_dur : float, optional
+        Pulse delay (s). Pulse will be zero-padded (prepended) to deliver the
+        pulse only after `delay_dur` milliseconds. Default: 0.
+    stim_dur : float, optional
+        Stimulus duration (ms). Pulse will be zero-padded (appended) to fit
+        the stimulus duration. Default: No additional zero padding, `stim_dur`
+        is `pdur`+`delay_dur`.
+
+    """
+    if stim_dur is None:
+        stim_dur = pdur + delay_dur
+
+    # Convert durations to number of samples
+    pulse_size = int(np.round(pdur / tsample))
+    delay_size = int(np.round(delay_dur / tsample))
+    stim_size = int(np.round(stim_dur / tsample))
+
+    if ptype == 'cathodic':
+        pulse = -np.ones(pulse_size)
+    elif ptype == 'anodic':
+        pulse = np.ones(pulse_size)
+    else:
+        raise ValueError("Acceptable values for `ptype` are 'anodic', "
+                         "'cathodic'.")
+
+    pulse = np.concatenate((np.zeros(delay_size), pulse, np.zeros(stim_size)))
+    return pulse[:stim_size]
+
+
+def get_biphasic_pulse(ptype, pdur, tsample, interphase_dur=0):
     """Returns a single biphasic pulse.
 
-    A single biphasic pulse with duration `pulse_dur` per phase,
+    A single biphasic pulse with duration `pdur` per phase,
     separated by `interphase_dur` is returned.
 
     Parameters
     ----------
-    pulse_dur : float
+    ptype : {'cathodicfirst', 'anodicfirst'}
+        A cathodic-first pulse has the negative phase first, whereas an
+        anodic-first pulse has the positive phase first.
+    pdur : float
         Duration of single (positive or negative) pulse phase in seconds.
     tsample : float
         Sampling time step in seconds.
-    interphase_dur : float
+    interphase_dur : float, optional
         Duration of inter-phase interval (between positive and negative
-        pulse) in seconds.
-    pulsetype : {'cathodicfirst', 'anodicfirst'}
-        A cathodic-first pulse has the negative phase first, whereas an
-        anodic-first pulse has the positive phase first.
+        pulse) in seconds. Default: 0.
 
     """
-    on = np.ones(int(round(pulse_dur / tsample)))
+    # Get the two monophasic pulses
+    on = get_monophasic_pulse('anodic', pdur, tsample, 0, pdur)
+    off = get_monophasic_pulse('cathodic', pdur, tsample, 0, pdur)
+
+    # Insert interphase gap if necessary
     gap = np.zeros(int(round(interphase_dur / tsample)))
-    off = -1 * on
-    if pulsetype == 'cathodicfirst':
-        # cathodicfirst has negative current first
+
+    # Order the pulses
+    if ptype == 'cathodicfirst':
+        # has negative current first
         pulse = np.concatenate((off, gap), axis=0)
         pulse = np.concatenate((pulse, on), axis=0)
-    elif pulsetype == 'anodicfirst':
+    elif ptype == 'anodicfirst':
         pulse = np.concatenate((on, gap), axis=0)
         pulse = np.concatenate((pulse, off), axis=0)
     else:
-        raise ValueError("Acceptable values for `pulsetype` are "
+        raise ValueError("Acceptable values for `type` are "
                          "'anodicfirst' or 'cathodicfirst'")
     return pulse
 
@@ -831,7 +877,8 @@ class Movie2Pulsetrain(TimeSeries):
         tsample : suggest TemporalModel.tsample
         """
         # set up the individual pulses
-        pulse = get_pulse(pulse_dur, tsample, interphase_dur, pulsetype)
+        pulse = get_biphasic_pulse(pulsetype, pulse_dur, tsample,
+                                   interphase_dur)
         # set up the sequence
         dur = rflum.shape[-1] / fps
         if stimtype == 'pulsetrain':
@@ -916,9 +963,8 @@ class Psycho2Pulsetrain(TimeSeries):
         delay = np.zeros(delay_size)
 
         # Single pulse given by `pulse_dur`
-        pulse = amp * get_pulse(pulse_dur, tsample,
-                                interphase_dur,
-                                pulsetype)
+        pulse = amp * get_biphasic_pulse(pulsetype, pulse_dur, tsample,
+                                         interphase_dur)
         pulse_size = pulse.size
         if pulse_size < 0:
             raise ValueError("Single pulse must fit within 1/freq interval.")

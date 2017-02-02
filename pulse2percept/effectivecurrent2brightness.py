@@ -22,6 +22,7 @@ class TemporalModel(object):
 
     def __init__(self, tsample=0.005 / 1000,
                  tau_nfl=0.42 / 1000, tau_inl=18.0 / 1000,
+                 delay_inl=40.0 / 1000,
                  tau_ca=45.25 / 1000, tau_slow=26.25 / 1000,
                  scale_slow=1150.0, lweight=0.636, aweight=0.5,
                  slope=3.0, shift=15.0):
@@ -43,6 +44,9 @@ class TemporalModel(object):
             nuclear layer (INL); i.e., bipolar cell layer.
             This is only important in combination with subretinal electrode
             arrays. Default: 18.0 / 1000 s.
+        delay_inl : float
+            Delay of inner nuclear layer (INL) response with respect to
+            stimulus onset. Default: 40.0 / 1000 s.
         tau_ca : float
             Time decay constant for the charge accumulation, has values
             between 38 - 57 ms. Default: 45.25 / 1000 s.
@@ -73,6 +77,7 @@ class TemporalModel(object):
         self.tsample = tsample
         self.tau_nfl = tau_nfl
         self.tau_inl = tau_inl
+        self.delay_inl = delay_inl
         self.tau_ca = tau_ca
         self.tau_slow = tau_slow
         self.slope = slope
@@ -88,8 +93,11 @@ class TemporalModel(object):
         # gamma_nfl and gamma_inl are used to calculate the fast response in
         # bipolar and ganglion cells respectively
 
-        t = np.arange(0, 8 * self.tau_inl, self.tsample)
-        self.gamma_inl = e2cm.gamma(1, self.tau_inl, t)
+        t = np.arange(0, 10 * self.tau_inl, self.tsample)
+        tmp_gamma = e2cm.gamma(2, self.tau_inl, t)
+        delay = np.zeros(int(np.round(delay_inl / self.tsample)))
+        t = np.concatenate((delay, t))
+        self.gamma_inl = np.concatenate((delay, tmp_gamma))
 
         t = np.arange(0, 10 * self.tau_nfl, self.tsample)
         self.gamma_nfl = e2cm.gamma(1, self.tau_nfl, t)

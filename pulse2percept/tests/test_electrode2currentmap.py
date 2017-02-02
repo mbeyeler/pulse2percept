@@ -205,18 +205,63 @@ def test_TimeSeries():
                      data_orig.shape[-1] / resample_factor)
 
 
-def test_get_pulse():
-    for pulse_type in ['cathodicfirst', 'anodicfirst']:
-        for pulse_dur in [0.25 / 1000, 0.45 / 1000, 0.65 / 1000]:
+def test_get_monophasic_pulse():
+    tsample = 1.0
+
+    for pdur in range(10):
+        for ddur in range(10):
+            for sdur in [None, 5, 10, 100]:
+                for ptype in ['anodic', 'cathodic']:
+                    pulse = e2cm.get_monophasic_pulse(ptype, pdur, tsample,
+                                                      ddur, sdur)
+
+                    # Make sure the pulse length is correct:
+                    # When stimulus duration is not specified, stimulus must
+                    # tightly fit pulse + delay. When stimulus direction is
+                    # specified, pulse duration must match that number exactly.
+                    if sdur is None:
+                        npt.assert_equal(pulse.size, pdur + ddur)
+                    else:
+                        npt.assert_equal(pulse.size, sdur)
+
+                    # Make sure delay is correct
+                    delay = pulse[:ddur]
+                    npt.assert_equal(np.allclose(delay, 0.0), True)
+
+                    # Make sure pulse length and amplitude are correct
+                    if pdur > 0:
+                        # Actually, depending on settings, pulse duration might
+                        # be different from what was specified:
+                        if sdur is not None and pdur + ddur > sdur:
+                            # Stim is trimmed, adjust pdur
+                            actual_pdur = np.maximum(0, sdur - ddur)
+                        else:
+                            actual_pdur = pdur
+
+                        # Find maximma/minima
+                        idx_min = np.isclose(pulse, -1.0)
+                        idx_max = np.isclose(pulse, 1.0)
+                        if ptype == 'anodic':
+                            npt.assert_equal(np.sum(idx_max), actual_pdur)
+                            if actual_pdur > 0:
+                                npt.assert_equal(pulse.max(), 1.0)
+                        else:
+                            npt.assert_equal(np.sum(idx_min), actual_pdur)
+                            if actual_pdur > 0:
+                                npt.assert_equal(pulse.min(), -1.0)
+
+
+def test_get_biphasic_pulse():
+    for ptype in ['cathodicfirst', 'anodicfirst']:
+        for pdur in [0.25 / 1000, 0.45 / 1000, 0.65 / 1000]:
             for interphase_dur in [0, 0.25 / 1000, 0.45 / 1000, 0.65 / 1000]:
                 for tsample in [5e-6, 1e-5, 5e-5]:
                     # generate pulse
-                    pulse = e2cm.get_pulse(pulse_dur, tsample,
-                                           interphase_dur,
-                                           pulse_type)
+                    pulse = e2cm.get_biphasic_pulse(ptype, pdur, tsample,
+                                                    interphase_dur)
 
                     # predicted length
-                    pulse_gap_dur = 2 * pulse_dur + interphase_dur
+                    pulse_gap_dur = 2 * pdur + interphase_dur
 
                     # make sure length is correct
                     npt.assert_equal(pulse.shape[-1],
@@ -236,7 +281,7 @@ def test_get_pulse():
                     # make sure pulse order is correct
                     idx_min = np.where(pulse == pulse.min())
                     idx_max = np.where(pulse == pulse.max())
-                    if pulse_type == 'cathodicfirst':
+                    if ptype == 'cathodicfirst':
                         # cathodicfirst should have min first
                         npt.assert_equal(idx_min[0] < idx_max[0], True)
                     else:

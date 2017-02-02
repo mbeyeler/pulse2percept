@@ -95,8 +95,8 @@ def test_debalthasar_threshold():
     # Make sure the threshold current fits for different implant heights
 
     def get_baltha_pulse(curr, tsample):
-        pulse = curr * e2cm.get_pulse(0.975 / 1000, tsample, 0.975 / 1000,
-                                      'cathodicfirst')
+        pulse = curr * e2cm.get_biphasic_pulse('cathodicfirst', 0.975 / 1000,
+                                               tsample, 0.975 / 1000)
         stim_dur = 0.1
         stim_size = int(round(stim_dur / tsample))
         pulse = np.concatenate((pulse, np.zeros(stim_size - pulse.size)))
