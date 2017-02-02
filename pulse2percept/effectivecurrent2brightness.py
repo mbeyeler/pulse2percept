@@ -14,7 +14,6 @@ import logging
 import pulse2percept.electrode2currentmap as e2cm
 from pulse2percept import utils
 
-# reload(logging)
 logger = logging.getLogger(__name__)
 
 
@@ -260,7 +259,8 @@ class TemporalModel(object):
 
 
 def pulse2percept(stim, implant, tm=None, retina=None,
-                  rsample=30, scale_charge=42.1, tol=0.05, use_ecs=True,
+                  rsample=30, scale_charge=42.1, tol=0.05,
+                  apply_charge=True, use_ecs=True, ecs_scale=1.0,
                   engine='joblib', dojit=True, n_jobs=-1):
     """Transforms an input stimulus to a percept
 
@@ -378,6 +378,8 @@ def pulse2percept(stim, implant, tm=None, retina=None,
     else:
         _, ecs = retina.electrode_ecs(implant)
 
+    ecs *= ecs_scale
+
     # `ecs_list` is a pixel by `n` list where `n` is the number of layers
     # being simulated. Each value in `ecs_list` is the current contributed
     # by each electrode for that spatial location
@@ -404,18 +406,19 @@ def pulse2percept(stim, implant, tm=None, retina=None,
                                                    np.prod(ecs.shape[:2])))
 
     # Apply charge accumulation
-    for i, p in enumerate(pt_list):
-        ca = tm.tsample * np.cumsum(np.maximum(0, -p.data))
-        tmp = fftconvolve(ca, tm.gamma_ca, mode='full')
-        conv_ca = scale_charge * tm.tsample * tmp[:p.data.size]
+    if apply_charge:
+        for i, p in enumerate(pt_list):
+            ca = tm.tsample * np.cumsum(np.maximum(0, -p.data))
+            tmp = fftconvolve(ca, tm.gamma_ca, mode='full')
+            conv_ca = scale_charge * tm.tsample * tmp[:p.data.size]
 
-        # negative elements first
-        idx = np.where(p.data <= 0)[0]
-        pt_list[i].data[idx] = np.minimum(p.data[idx] + conv_ca[idx], 0)
+            # negative elements first
+            idx = np.where(p.data <= 0)[0]
+            pt_list[i].data[idx] = np.minimum(p.data[idx] + conv_ca[idx], 0)
 
-        # then positive elements
-        idx = np.where(p.data > 0)[0]
-        pt_list[i].data[idx] = np.maximum(p.data[idx] - conv_ca[idx], 0)
+            # then positive elements
+            idx = np.where(p.data > 0)[0]
+            pt_list[i].data[idx] = np.maximum(p.data[idx] - conv_ca[idx], 0)
     pt_arr = np.array([p.data for p in pt_list])
 
     sr_list = utils.parfor(calc_pixel, ecs_list, n_jobs=n_jobs, engine=engine,
