@@ -22,8 +22,9 @@ class TemporalModel(object):
     def __init__(self, tsample=0.005 / 1000,
                  tau_nfl=0.42 / 1000, tau_inl=18.0 / 1000,
                  delay_inl=40.0 / 1000,
-                 tau_ca=45.25 / 1000, tau_slow=26.25 / 1000,
-                 scale_slow=1150.0, lweight=0.636, aweight=0.5,
+                 tau_ca=45.25 / 1000, scale_charge=42.1,
+                 tau_slow=26.25 / 1000, scale_slow=1150.0,
+                 lweight=0.636, aweight=0.5,
                  slope=3.0, shift=15.0):
         """Temporal Sensitivity Model
 
@@ -49,6 +50,8 @@ class TemporalModel(object):
         tau_ca : float
             Time decay constant for the charge accumulation, has values
             between 38 - 57 ms. Default: 45.25 / 1000 s.
+        scale_charge : float
+            Scaling factor applied to charge accumulation. Default: 42.1
         tau_slow : float
             Time decay constant for the slow leaky integrator.
             Default: 26.25 / 1000 s.
@@ -83,6 +86,7 @@ class TemporalModel(object):
         self.shift = shift
         self.lweight = lweight
         self.aweight = aweight
+        self.scale_charge = scale_charge
         self.scale_slow = scale_slow
 
         # perform one-time setup calculations
@@ -108,6 +112,23 @@ class TemporalModel(object):
         # gamma_slow is used to calculate the slow response
         t = np.arange(0, 10 * self.tau_slow, self.tsample)
         self.gamma_slow = e2cm.gamma(3, self.tau_slow, t)
+
+    def calc_per_electrode(self, pt):
+        ca = self.tsample * np.cumsum(np.maximum(0, -pt.data))
+        tmp = fftconvolve(ca, self.gamma_ca, mode='full')
+        conv_ca = self.scale_charge * self.tsample * tmp[:pt.data.size]
+
+        pt_entry = np.zeros_like(pt.data)
+
+        # negative elements first
+        idx = np.where(pt.data <= 0)[0]
+        pt_entry[idx] = np.minimum(pt.data[idx] + conv_ca[idx], 0)
+
+        # then positive elements
+        idx = np.where(pt.data > 0)[0]
+        pt_entry[idx] = np.maximum(pt.data[idx] - conv_ca[idx], 0)
+
+        return pt_entry
 
     def fast_response(self, b1, gamma, dojit=True, usefft=False):
         """Fast response function (Box 2) for the bipolar layer
@@ -259,8 +280,7 @@ class TemporalModel(object):
 
 
 def pulse2percept(stim, implant, tm=None, retina=None,
-                  rsample=30, scale_charge=42.1, tol=0.05,
-                  apply_charge=True, use_ecs=True, ecs_scale=1.0,
+                  rsample=30, tol=0.05, use_ecs=True, ecs_scale=1.0,
                   engine='joblib', dojit=True, n_jobs=-1):
     """Transforms an input stimulus to a percept
 
@@ -288,9 +308,6 @@ def pulse2percept(stim, implant, tm=None, retina=None,
         Resampling factor. For example, a resampling factor of 3 keeps
         only every third frame.
         Default: 30 frames per second.
-    scale_charge : float, optional
-        Scaling factor applied to charge accumulation (used to be called
-        epsilon). Default: 42.1.
     tol : float, optional
         Ignore pixels whose effective current is smaller than a fraction `tol`
         of the max value.
@@ -361,6 +378,11 @@ def pulse2percept(stim, implant, tm=None, retina=None,
     elif not isinstance(retina, e2cm.Retina):
         raise TypeError("`retina` object must be of type e2cm.Retina")
 
+    # Perform any necessary calculations per electrode
+    # pt_list = tm.calc_per_electrode(pt_list)
+    pt_list = utils.parfor(tm.calc_per_electrode, pt_list, engine=engine,
+                           n_jobs=n_jobs)
+
     # Which layer to simulate is given by implant type.
     # For now, both implant types process the same two layers. In the
     # future, these layers might differ. Order doesn't matter.
@@ -405,24 +427,8 @@ def pulse2percept(stim, implant, tm=None, retina=None,
                                                    len(ecs_list),
                                                    np.prod(ecs.shape[:2])))
 
-    # Apply charge accumulation
-    if apply_charge:
-        for i, p in enumerate(pt_list):
-            ca = tm.tsample * np.cumsum(np.maximum(0, -p.data))
-            tmp = fftconvolve(ca, tm.gamma_ca, mode='full')
-            conv_ca = scale_charge * tm.tsample * tmp[:p.data.size]
-
-            # negative elements first
-            idx = np.where(p.data <= 0)[0]
-            pt_list[i].data[idx] = np.minimum(p.data[idx] + conv_ca[idx], 0)
-
-            # then positive elements
-            idx = np.where(p.data > 0)[0]
-            pt_list[i].data[idx] = np.maximum(p.data[idx] - conv_ca[idx], 0)
-    pt_arr = np.array([p.data for p in pt_list])
-
     sr_list = utils.parfor(calc_pixel, ecs_list, n_jobs=n_jobs, engine=engine,
-                           func_args=[pt_arr, tm, rsample, dolayers, dojit])
+                           func_args=[pt_list, tm, rsample, dolayers, dojit])
     bm = np.zeros(retina.gridx.shape + (sr_list[0].data.shape[-1], ))
     idxer = tuple(np.array(idx_list)[:, i] for i in range(2))
     bm[idxer] = [sr.data for sr in sr_list]
