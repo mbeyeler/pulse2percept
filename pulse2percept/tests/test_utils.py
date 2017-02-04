@@ -1,6 +1,33 @@
-from pulse2percept import utils
 import numpy as np
 import numpy.testing as npt
+
+from pulse2percept import utils
+
+
+def test_TimeSeries():
+    dur = 0.5
+    for tsample in [0.1, 0.01, 0.001]:
+        data = np.zeros((3, int(np.round(dur / tsample))))
+        data[1] = 1.5
+        ts = utils.TimeSeries(tsample, data)
+
+        # Make sure all attributes are created
+        npt.assert_equal(hasattr(ts, 'tsample'), True)
+        npt.assert_equal(hasattr(ts, 'shape'), True)
+        npt.assert_equal(hasattr(ts, 'duration'), True)
+        npt.assert_equal(hasattr(ts, 'data'), True)
+
+        # Make sure attribute values are valid
+        npt.assert_equal(ts.tsample, tsample)
+        npt.assert_equal(ts.shape, data.shape)
+        npt.assert_equal(ts.duration, data.shape[-1] * tsample)
+        npt.assert_equal(ts[1].data, 1.5)
+
+        # Make sure resampling works as intended
+        rsfactor = 10
+        orig_shape = ts.shape[-1]
+        ts.resample(rsfactor)
+        npt.assert_equal(ts.data.shape[-1], np.ceil(orig_shape / rsfactor))
 
 
 def test_Parameters():

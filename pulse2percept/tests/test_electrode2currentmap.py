@@ -196,15 +196,6 @@ def test_ArgusII():
     npt.assert_equal(argus['B1'], argus[10])
 
 
-def test_TimeSeries():
-    data_orig = np.zeros((10, 10, 1000))
-    ts1 = e2cm.TimeSeries(1, data_orig)
-    resample_factor = 10
-    ts1.resample(resample_factor)
-    npt.assert_equal(ts1.data.shape[-1],
-                     data_orig.shape[-1] / resample_factor)
-
-
 def test_get_monophasic_pulse():
     tsample = 1.0
 
