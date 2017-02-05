@@ -38,7 +38,7 @@ class TemporalModel(object):
             Time decay constant for the fast leaky integrater of the nerve
             fiber layer (NFL); i.e., ganglion cell layer.
             This is only important in combination with epiretinal electrode
-            arrays. Default: 45.25 / 1000 s.
+            arrays. Default: 0.42 / 1000 s.
         tau_inl : float
             Time decay constant for the fast leaky integrater of the inner
             nuclear layer (INL); i.e., bipolar cell layer.
@@ -423,7 +423,7 @@ def pulse2percept(stim, implant, tm=None, retina=None,
                 ecs_list.append(ecs[yy, xx])
                 idx_list.append([yy, xx])
 
-    logger.info("tol=%.1f%%, %d/%d px selected" % (tol * 100,
+    logger.debug("tol=%.1f%%, %d/%d px selected" % (tol * 100,
                                                    len(ecs_list),
                                                    np.prod(ecs.shape[:2])))
 

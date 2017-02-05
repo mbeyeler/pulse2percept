@@ -24,7 +24,7 @@ def test_TimeSeries():
         npt.assert_equal(ts[1].data, 1.5)
 
         # Make sure resampling works as intended
-        rsfactor = 10
+        rsfactor = 10.0
         orig_shape = ts.shape[-1]
         ts.resample(rsfactor)
         npt.assert_equal(ts.data.shape[-1], np.ceil(orig_shape / rsfactor))
