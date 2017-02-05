@@ -424,8 +424,8 @@ def pulse2percept(stim, implant, tm=None, retina=None,
                 idx_list.append([yy, xx])
 
     logger.debug("tol=%.1f%%, %d/%d px selected" % (tol * 100,
-                                                   len(ecs_list),
-                                                   np.prod(ecs.shape[:2])))
+                                                    len(ecs_list),
+                                                    np.prod(ecs.shape[:2])))
 
     sr_list = utils.parfor(calc_pixel, ecs_list, n_jobs=n_jobs, engine=engine,
                            func_args=[pt_list, tm, rsample, dolayers, dojit])
