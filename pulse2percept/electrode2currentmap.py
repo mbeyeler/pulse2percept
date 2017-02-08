@@ -959,7 +959,7 @@ class Psycho2Pulsetrain(TimeSeries):
         delay_size = int(np.round(1.0 * delay / tsample))
 
         if delay_size < 0:
-            raise ValueError("Delay must fit within 1/freq interval.")
+            raise ValueError("Delay cannot be negative.")
         delay = np.zeros(delay_size)
 
         # Single pulse given by `pulse_dur`
@@ -972,6 +972,8 @@ class Psycho2Pulsetrain(TimeSeries):
         # Then gap is used to fill up what's left
         gap_size = envelope_size - (delay_size + pulse_size)
         if gap_size < 0:
+            logging.error("Envelope (%d) can't fit pulse (%d) + delay (%d)" % 
+                          (envelope_size, pulse_size, delay_size))
             raise ValueError("Pulse and delay must fit within 1/freq "
                              "interval.")
         gap = np.zeros(gap_size)
