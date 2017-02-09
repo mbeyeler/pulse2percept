@@ -972,7 +972,7 @@ class Psycho2Pulsetrain(TimeSeries):
         # Then gap is used to fill up what's left
         gap_size = envelope_size - (delay_size + pulse_size)
         if gap_size < 0:
-            logging.error("Envelope (%d) can't fit pulse (%d) + delay (%d)" % 
+            logging.error("Envelope (%d) can't fit pulse (%d) + delay (%d)" %
                           (envelope_size, pulse_size, delay_size))
             raise ValueError("Pulse and delay must fit within 1/freq "
                              "interval.")
