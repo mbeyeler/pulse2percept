@@ -17,6 +17,126 @@ from pulse2percept import utils
 logger = logging.getLogger(__name__)
 
 
+def gaussian(t, alpha, tau, t0=0, n=1):
+    ttau = (t - t0) / tau
+    return alpha * ttau ** n * np.exp(-n * (ttau - 1))
+
+
+def rgc_impulse(ampl_pos, ampl_min, tau_pos=0.8, tau_min=0.42,
+                n=15, tsample=0.005):
+    # TODO: make it work with seconds instead of milliseconds
+    t = np.arange(0, 2.0, tsample)
+    y = gaussian(t, ampl_pos, tau_pos, 0, n)
+    y -= gaussian(t, ampl_min, tau_min, 0, n)
+    return y
+
+
+class GanglionCell(object):
+    def __init__(self, tsample,
+                 ca_scale=1.0, ca_tau=0.0191,
+                 inl_scale=0, inl_tau=5.0 / 1000,
+                 anodic_scale=0.2299,
+                 alpha=1, beta=1, gamma=1, delta=1, epsilon=1,
+                 zeta=1,
+                 axon_scale=0.54245,
+                 sig_a=1.0, sig_b=0.0):
+        assert ca_scale >= 0
+        assert ca_tau > 0
+        assert inl_scale >= 0
+        assert inl_tau > 0
+        assert anodic_scale >= 0
+        assert axon_scale >= 0
+        self.tsample = tsample
+        self.ca_scale = ca_scale
+        self.ca_tau = ca_tau
+        self.inl_scale = inl_scale
+        self.axon_scale = axon_scale
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.delta = delta
+        self.epsilon = epsilon
+        self.zeta = zeta
+        self.sig_a = sig_a
+        self.sig_b = sig_b
+
+        self.gamma_gcl = rgc_impulse(anodic_scale, 1.0, tsample=tsample * 1000)
+        self.gamma_gcl /= np.trapz(np.abs(self.gamma_gcl), dx=tsample)
+
+        self.inl_tau = inl_tau
+        self.delay_inl = 40.0 / 1000
+        if self.inl_scale > 0:
+            t = np.arange(0, 10 * self.inl_tau, self.tsample)
+            tmp_gamma = e2cm.gamma(2, 10 * self.inl_tau, t)
+            tmp_gamma /= np.trapz(np.abs(tmp_gamma), dx=tsample)
+            delay = np.zeros(int(np.round(self.delay_inl / self.tsample)))
+            t = np.concatenate((delay, t))
+            self.gamma_inl = np.concatenate((delay, tmp_gamma))
+
+        if self.ca_scale > 0:
+            t = np.arange(0, 10 * self.ca_tau, self.tsample)
+            self.gamma_ca = e2cm.gamma(1, self.ca_tau, t)
+            self.gamma_ca /= np.trapz(self.gamma_ca, dx=self.tsample)
+
+    def effective_current(self, radius, height):
+        ec = self.beta / radius
+        if height < 200:
+            ec += self.gamma * height + self.alpha
+        else:
+            ec += self.delta * height + self.epsilon
+        # ec += self.delta * height / radius
+        # ec += self.epsilon * height / radius ** 2
+
+        # ec += (self.gamma * height ** 2 + self.delta * height * radius +
+        #        self.epsilon * height) / radius ** 2
+        return ec
+ 
+    def model_cascade(self, pt, isaxon=False, radius=1.0, height=0.0):
+        assert pt.tsample == self.tsample
+
+        self.stim = pt
+        stim = pt.data
+        if isaxon:
+            stim *= self.axon_scale
+
+        ec = self.effective_current(radius, height)
+        stim *= ec
+
+        # Calculate charge accumulation on electrode
+        if self.ca_scale > 0:
+            self.ca = utils.sparseconv(self.gamma_ca, np.abs(stim),
+                                       mode='full')
+            self.ca = pt.tsample * self.ca[:stim.size]
+        else:
+            self.ca = np.zeros_like(stim)
+
+        # Calculate SL response (GCL)
+        self.r_gcl_lin = utils.sparseconv(self.gamma_gcl, stim)
+        self.r_gcl_lin = pt.tsample * self.r_gcl_lin[:stim.size]
+
+        # Calculate LL response (INL)
+        if self.inl_scale > 0:
+            self.r_inl_lin = utils.sparseconv(self.gamma_inl, stim)
+            self.r_inl_lin = pt.tsample * self.r_inl_lin[:stim.size]
+            self.r_inl_lin = fftconvolve(self.gamma_gcl, self.r_inl_lin,
+                                         mode='full')
+            self.r_inl_lin = pt.tsample * self.r_inl_lin[:stim.size]
+        else:
+            self.r_inl_lin = np.zeros_like(stim)
+
+        # Sum up responses
+        self.r_lin = self.r_gcl_lin + self.inl_scale * self.r_inl_lin
+
+        # Adjust for accumulated charge
+        self.r_adj = self.r_lin - self.ca_scale * self.ca
+
+        # Feed through logistic activation function
+        exp_arg = -self.sig_a * self.r_adj + self.sig_b
+        # self.r_rgc = 100.0 / (1.0 + np.exp(exp_arg))
+        self.r_rgc = 100.0 * expit(-exp_arg)
+        return utils.TimeSeries(pt.tsample, self.r_rgc)
+
+
 class TemporalModel(object):
 
     def __init__(self, tsample=0.005 / 1000,
