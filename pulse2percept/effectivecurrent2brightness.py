@@ -90,7 +90,7 @@ class GanglionCell(object):
         # ec += (self.gamma * height ** 2 + self.delta * height * radius +
         #        self.epsilon * height) / radius ** 2
         return ec
- 
+
     def model_cascade(self, pt, isaxon=False, radius=1.0, height=0.0):
         assert pt.tsample == self.tsample
 
