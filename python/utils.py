@@ -38,9 +38,7 @@ class TimeSeries(object):
         """
         self.data = data
         self.tsample = tsample
-        self.sampling_rate = 1 / tsample
         self.duration = self.data.shape[-1] * tsample
-        self.time = np.linspace(tsample, self.duration, data.shape[-1])
         self.shape = data.shape
 
     def __getitem__(self, y):

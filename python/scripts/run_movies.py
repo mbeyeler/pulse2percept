@@ -14,8 +14,10 @@ import skimage.io as sio
 import skimage.color as sic
 import skimage.transform as sit
 
-r = e2cm.Retina(axon_map='retina_s25_1700by2800.npz',
-                sampling=25, ylo=-1700, yhi=1700, xlo=-2800, xhi=2800, axon_lambda=2)
+tsample = 0.01 / 1000
+
+r = e2cm.Retina(axon_map='retina_s50_1700by2800.npz',
+                sampling=50, ylo=-1700, yhi=1700, xlo=-2800, xhi=2800, axon_lambda=2)
 
 xlist = []
 ylist = []
@@ -33,71 +35,74 @@ e_all = e2cm.ElectrodeArray(rlist, xlist, ylist)
 e_rf = []
 for e in e_all.electrodes:
     e_rf.append(e2cm.receptive_field(e, r.gridx, r.gridy, e_spacing))
+print('e_rf', e_rf[0].shape)
 
-loadpath = '../data'
+loadpath = '/home/mbeyeler/source/pulse2percept/data'
 
 movies = [
-    'boston-train.mp4',
-    'kid-pool.avi',
-    'olly-soccer.avi',
-    'zach-scoot.avi'
+#    'boston-train.mp4',
+#    'kid-pool.avi',
+    'zach-scoot.avi',
+    'olly-soccer.avi'
 ]
 
 framerates = [
+#    29,
+#    30,
     29,
-    30,
-    119,
-    29
+    119
 ]
 
-i = 0
-j = 0
-
 for movie, fps in zip(movies, framerates):
-    for invert in [True, False]:
-        if invert:
-            fstr = '%s-invert-' % movie[:-4]
-        else:
-            fstr = '%s-' % movie[:-4]
+    fstr = '%s-' % movie[:-4]
 
-        video = p2p.files.load_video('%s/%s' % (loadpath, movie))
-        video.min(), video.max(), video.dtype, video.shape
+    print('Processing %s' % movie)
+    video = p2p.files.load_video('%s/%s' % (loadpath, movie))
+    print('video', video.min(), video.max(), video.dtype, video.shape)
 
-        newvideo = np.zeros(video.shape[1], video.shape[
-                            2], video.shape[0]).astype(np.float32)
-        for i, frame in enumerate(video):
-            newframe = sic.rgb2gray(frame)
-            newvideo[i, ...] = newframe.astype(np.float32) / 255.0
-        newvideo.min(), newvideo.max(), newvideo.dtype, newvideo.shape
+    newvideo = np.zeros((r.gridx.shape[0], r.gridx.shape[1], video.shape[0])).astype(np.float32)
+    for i, frame in enumerate(video):
+        newframe = sic.rgb2gray(frame).astype(np.float32)
+        if newframe.max() > 1.0:
+            newframe = newframe / 255.0
+        newvideo[..., i] = sit.resize(newframe, r.gridx.shape)
+    print('newvideo', newvideo.min(), newvideo.max(), newvideo.dtype, newvideo.shape)
+    frames = newvideo
+    video = None
+    
+    frames = np.flipud(frames)
+    print('frames', frames.min(), frames.max(), frames.dtype, frames.shape)
 
-        frames = sit.resize(newvideo, r.gridx.shape)
-        frames = sic.rgb2gray(frames)
+    pt = []
+    for rf in e_rf:
+        rflum = e2cm.retinalmovie2electrodtimeseries( rf, frames, fps=fps)
+        # plt.plot(rflum)
+        ptrain = e2cm.Movie2Pulsetrain(rflum, tsample=tsample)
+        # plt.plot(ptrain.data)
+        pt.append(ptrain)
 
-        frames = sic.gray2rgb(img)
-        frames = sit.resize(frames, r.gridx.shape)
-        if invert:
-            frames = 1.0 - frames
-        frames = np.flipud(frames)
-        frames.min(), frames.max(), frames.dtype, frames.shape
+    temporal_model = ec2b.TemporalModel(tsample)
 
-        pt = []
-        for rf in e_rf:
-            rflum = e2cm.retinalmovie2electrodtimeseries(
-                rf, frames[i:i + r.gridx.shape[0], j:j + r.gridx.shape[1]],
-                fps=fps)
-            # plt.plot(rflum)
-            ptrain = e2cm.Movie2Pulsetrain(rflum)
-            # plt.plot(ptrain.data)
-            pt.append(ptrain)
+    ecs, _ = r.electrode_ecs(e_all)
 
-        temporal_model = ec2b.TemporalModel()
+    print('Running p2p')
+    idx_list, sr_list = ec2b.pulse2percept(temporal_model, ecs, r, pt, n_jobs=5, fps=30)
+    pickle.dump((idx_list, sr_list), open(fstr + '-desparatesave.dat', 'wb'))
+    print('Done')
 
-        ecs, cs = r.electrode_ecs(e_all)
+    temporal_model = None
+    pt = None
+    ecs = None
 
-        brightness_movie = ec2b.pulse2percept(temporal_model, ecs, r, pt)
+    bm = np.zeros(r.gridx.shape + (sr_list[0].data.shape[-1], ))
+    idxer = tuple(np.array(idx_list)[:, i] for i in range(2))
+    idx_list = None
+    bm[idxer] = [sr.data for sr in sr_list] 
+    sr_list = None
+    
+    percept = utils.TimeSeries(tsample, bm)
+    percept.resample(20)
 
-        mov = p2p.utils.TimeSeries(
-            brightness_movie.tsample, brightness_movie.data)
+    mov = p2p.utils.TimeSeries(tsample, percept.data)
 
-        pickle.dump(mov, open(fstr + '-percept.dat', 'wb'))
-
+    pickle.dump(mov, open(fstr + '-percept.dat', 'wb'))

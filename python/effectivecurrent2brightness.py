@@ -8,6 +8,7 @@ Output: a vector of brightness over time
 from __future__ import print_function
 from scipy.misc import factorial
 from scipy.signal import fftconvolve
+import scipy.special as ss
 import numpy as np
 import utils
 from utils import TimeSeries
@@ -38,7 +39,7 @@ def gamma(n, tau, t):
 
 
 class TemporalModel(object):
-    def __init__(self, tau1=.42/1000, tau2=45.25/1000,
+    def __init__(self, tsample, tau1=.42/1000, tau2=45.25/1000,
                  tau3=26.25/1000, e=8.73, beta=.6, asymptote=14, slope=3,
                  shift=16):
         """
@@ -73,55 +74,52 @@ class TemporalModel(object):
         self.asymptote = asymptote
         self.slope = slope
         self.shift = shift
+        self.tsample = tsample
+
+        t = np.arange(0, 10 * self.tau1, tsample)
+        self.gamma1 = gamma(1, self.tau1, t)
+
+        t = np.arange(0, 10 * self.tau2, tsample)
+        self.gamma2 = gamma(1, self.tau2, t)
+
+        t = np.arange(0, 10 * self.tau3, tsample)
+        self.gamma3 = gamma(3, self.tau3, t)
 
     def fast_response(self, stimulus, dojit=True):
         """
         Fast response function
         """
-        t = np.arange(0, 20 * self.tau1, stimulus.tsample)
-        g = gamma(1, self.tau1, t)
-        R1 = stimulus.tsample * utils.sparseconv(g, stimulus.data, dojit)
-        return TimeSeries(stimulus.tsample, R1)
+        return self.tsample * utils.sparseconv(self.gamma1, stimulus, dojit)
 
     def charge_accumulation(self, fast_response, stimulus):
-        t = np.arange(0, 8 * self.tau2, fast_response.tsample)
-
         # calculated accumulated charge
-        rect_amp = np.where(stimulus.data > 0, stimulus.data, 0)  # rectify
-        ca = stimulus.tsample * np.cumsum(rect_amp.astype(float), axis=-1)
-        g = gamma(1, self.tau2, t)
-        chargeaccumulated = (self.e * stimulus.tsample *
-                             fftconvolve(g, ca))
-        zero_pad = np.zeros(fast_response.shape[:-1] +
-                            (chargeaccumulated.shape[-1] -
-                             fast_response.shape[-1],))
-
-        fast_response = TimeSeries(fast_response.tsample,
-                                   np.concatenate([fast_response.data,
-                                                   zero_pad], -1))
-
-        R2 = fast_response.data - chargeaccumulated
-        ind = R2 < 0
-        R2 = np.where(R2 > 0, R2, 0)  # rectify again
-        return TimeSeries(fast_response.tsample, R2)
+        ca = self.tsample * np.cumsum(np.maximum(0, stimulus), axis=-1)
+        charge_acc = self.e * self.tsample * fftconvolve(ca, self.gamma2)
+        return np.maximum(0, fast_response - charge_acc[:fast_response.size])
 
     def stationary_nonlinearity(self, fast_response_ca):
         # now we put in the stationary nonlinearity of Devyani's:
-        R2norm = fast_response_ca.data / fast_response_ca.data.max()
-        scale_factor = (self.asymptote / (1 + np.exp(-(fast_response_ca.data /
-                        self.slope) +
-                        self.shift)))
-        R3 = R2norm * scale_factor  # scaling factor varies with original
-        return TimeSeries(fast_response_ca.tsample, R3)
+        R2norm = fast_response_ca / fast_response_ca.max()
+        scale  = ss.expit(fast_response_ca / self.slope - self.shift)
+        R3 = R2norm * scale * self.asymptote
+        return R3
 
     def slow_response(self, fast_response_ca_snl):
         # this is cropped as tightly as
         # possible for speed sake
-        t = np.arange(0, self.tau3 * 8, fast_response_ca_snl.tsample)
-        g = gamma(3, self.tau3, t)
-        c = fftconvolve(g, fast_response_ca_snl.data)
-        return TimeSeries(fast_response_ca_snl.tsample,
-                          fast_response_ca_snl.tsample * c)
+        c = fftconvolve(self.gamma3, fast_response_ca_snl)
+        return self.tsample * c
+
+    def calc_pixel(self, ecs_vector, stimuli, dojit):
+        ecm = np.zeros(stimuli[0].data.shape[0])  # time vector
+        for ii, ecs in enumerate(ecs_vector):
+            ecm += ecs * stimuli[ii].data
+
+        fr = self.fast_response(ecm, dojit=dojit)
+        ca = self.charge_accumulation(fr, ecm)
+        sn = self.stationary_nonlinearity(ca)
+        sr = self.slow_response(sn) 
+        return TimeSeries(self.tsample, sr)
 
 
 def pulse2percept(temporal_model, ecs, retina, stimuli,
@@ -148,22 +146,16 @@ def pulse2percept(temporal_model, ecs, retina, stimuli,
             else:
                 ecs_list.append(ecs[yy, xx])
                 idx_list.append([yy, xx])
+    print("selected %d/%d pixels" % (len(ecs_list), np.prod(retina.gridx.shape)))
 
-    sr_list = utils.parfor(calc_pixel, ecs_list, n_jobs=n_jobs,
-                           func_args=[retina, stimuli, temporal_model,
-                                      rs, dojit])
-    bm = np.zeros(retina.gridx.shape + (sr_list[0].data.shape[-1], ))
-    idxer = tuple(np.array(idx_list)[:, i] for i in range(2))
-    bm[idxer] = [sr.data for sr in sr_list]
+    sr_list = utils.parfor(temporal_model.calc_pixel, ecs_list, n_jobs=n_jobs,
+                           func_args=[stimuli, dojit])
 
-    return TimeSeries(sr_list[0].tsample, bm)
+    return idx_list, sr_list
+    #bm = np.zeros(retina.gridx.shape + (sr_list[0].data.shape[-1], ))
+    #idxer = tuple(np.array(idx_list)[:, i] for i in range(2))
+    #bm[idxer] = [sr.data for sr in sr_list]
+    #return TimeSeries(sr_list[0].tsample, bm)
 
 
-def calc_pixel(ecs_vector, retina, stimuli, temporal_model, rs, dojit):
-    ecm = retina.ecm(ecs_vector, stimuli)
-    fr = temporal_model.fast_response(ecm, dojit=dojit)
-    ca = temporal_model.charge_accumulation(fr, ecm)
-    sn = temporal_model.stationary_nonlinearity(ca)
-    sr = temporal_model.slow_response(sn)
-    sr.resample(rs)
-    return sr
+

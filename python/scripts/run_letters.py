@@ -1,4 +1,4 @@
-mport sys
+import sys
 sys.path.append('..')
 
 import numpy as np
@@ -34,7 +34,7 @@ e_rf = []
 for e in e_all.electrodes:
     e_rf.append(e2cm.receptive_field(e, r.gridx, r.gridy, e_spacing))
 
-loadpath = '../data/letters'
+loadpath = '~/source/pulse2percept/examples/notebooks/letters'
 
 letters = [
     'T',
