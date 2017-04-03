@@ -3,6 +3,7 @@ import scipy.signal as signal
 import scipy.special as ss
 import os.path
 import logging
+import abc
 
 from pulse2percept import utils
 
@@ -214,72 +215,58 @@ class Grid(object):
 
 
 class TemporalModel(object):
+    """Abstract base class for all models of temporal sensitivity.
 
-    def __init__(self, tsample=0.005 / 1000,
-                 tau_gcl=0.42 / 1000, tau_inl=18.0 / 1000,
-                 tau_ca=45.25 / 1000, scale_ca=42.1,
-                 tau_slow=26.25 / 1000, scale_slow=10.0,
-                 lweight=0.636, aweight=0.5,
-                 slope=3.0, shift=15.0):
-        """Temporal Sensitivity Model
+    This class provides a standard template for all models of temporal
+    sensitivity.
 
-        A model of temporal integration from retina pixels.
+    Every TemporalModel must provide the following methods:
 
-        Parameters
-        ----------
-        tsample : float
-            Sampling time step (seconds). Default: 5e-6 s.
-        tau_gcl : float
-            Time decay constant for the fast leaky integrater of the ganglion
-            cell layer (GCL).
-            This is only important in combination with epiretinal electrode
-            arrays. Default: 45.25 / 1000 s.
-        tau_inl : float
-            Time decay constant for the fast leaky integrater of the inner
-            nuclear layer (INL); i.e., bipolar cell layer.
-            This is only important in combination with subretinal electrode
-            arrays. Default: 18.0 / 1000 s.
-        tau_ca : float
-            Time decay constant for the charge accumulation, has values
-            between 38 - 57 ms. Default: 45.25 / 1000 s.
-        scale_ca : float, optional
-            Scaling factor applied to charge accumulation (used to be called
-            epsilon). Default: 42.1.
-        tau_slow : float
-            Time decay constant for the slow leaky integrator.
-            Default: 26.25 / 1000 s.
-        scale_slow : float
-            Scaling factor applied to the output of the cascade, to make
-            output values interpretable brightness values >= 0.
-            Default: 1150.0
-        lweight : float
-            Relative weight applied to responses from bipolar cells (weight
-            of ganglion cells is 1).
-            Default: 0.636.
-        aweight : float
-            Relative weight applied to anodic charges (weight of cathodic
-            charges is 1).
-            Default: 0.5.
-        slope : float
-            Slope of the logistic function in the stationary nonlinearity
-            stage. Default: 3. In normalized units of perceptual response
-            perhaps should be 2.98
-        shift : float
-            Shift of the logistic function in the stationary nonlinearity
-            stage. Default: 16. In normalized units of perceptual response
-            perhaps should be 15.9
-        """
-        self.tsample = tsample
-        self.tau_gcl = tau_gcl
-        self.tau_inl = tau_inl
-        self.tau_ca = tau_ca
-        self.scale_ca = scale_ca
-        self.tau_slow = tau_slow
-        self.slope = slope
-        self.shift = shift
-        self.lweight = lweight
-        self.aweight = aweight
-        self.scale_slow = scale_slow
+    - `model_cascade`
+
+    Every TemporalModel must provide the following properties:
+
+    - `tsample`
+
+    """
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractmethod
+    def model_cascade(self, ecm):
+        """Run the model cascade and return a brightness value"""
+        return
+
+    @abc.abstractproperty
+    def tsample(self):
+        """Returns the time sampling step of the model"""
+        raise NotImplementedError
+
+
+class Nanduri2012(TemporalModel):
+
+    def __init__(self, tsample, **kwargs):
+        self._tsample = tsample
+
+        # Set default values of keyword arguments
+        self.tau_gcl = 0.42 / 1000
+        self.tau_inl = 18.0 / 1000
+        self.tau_ca = 45.25 / 1000
+        self.tau_slow = 26.25 / 1000
+        self.scale_ca = 42.1
+        self.scale_slow = 1150.0
+        self.lweight = 0.636
+        self.aweight = 0.5
+        self.slope = 3.0
+        self.shift = 15.0
+
+        # Overwrite any given keyword arguments
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                w_s = "Unknown class attribute '%s'" % key
+                logging.getLogger(__name__).warn(w_s)
+                continue
+
+            setattr(self, key, value)
 
         # perform one-time setup calculations
         # Gamma functions used as convolution kernels do not depend on input
@@ -296,6 +283,10 @@ class TemporalModel(object):
 
         # gamma_slow is used to calculate the slow response
         _, self.gamma_slow = utils.gamma(3, self.tau_slow, self.tsample)
+
+    @property
+    def tsample(self):
+        return self._tsample
 
     def fast_response(self, stim, gamma, dojit=True, usefft=False):
         """Fast response function (Box 2) for the bipolar layer

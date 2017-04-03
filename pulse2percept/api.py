@@ -132,64 +132,61 @@ class Simulation(object):
                                datapath=datapath,
                                save_data=save_data)
 
-    def set_ganglion_cell_layer(self, tsample=0.005 / 1000,
-                                tau_gcl=0.42 / 1000, tau_inl=18.0 / 1000,
-                                tau_ca=45.25 / 1000, scale_ca=42.1,
-                                tau_slow=26.25 / 1000, scale_slow=10.0,
-                                lweight=0.636, aweight=0.5,
-                                slope=3.0, shift=15.0):
+    def set_ganglion_cell_layer(self, model, tsample=0.005 / 1000, **kwargs):
         """Sets parameters of the ganglion cell layer (GCL)
+
+        Several different models are available, each of which can be customized
+        using a number of optional keyword arguments.
 
         Parameters
         ----------
-        tsample : float
-            Sampling time step (seconds). Default: 0.005 / 1000 s.
-        tau_gcl : float
-            Time decay constant for the fast leaky integrater of the ganglion
-            cell layer.
-            Default: 45.25 / 1000 s.
-        tau_inl : float
-            Time decay constant for the fast leaky integrater of the inner
-            nuclear layer (INL). It has been shown that even epiretinal arrays
-            can activate bipolar cells (in the INL), which in turn influence
-            GCL activity. Default: 18.0 / 1000 s.
-        tau_ca : float
-            Time decay constant for the charge accumulation, has values
-            between 38 - 57 ms. Default: 45.25 / 1000 s.
-        scale_ca : float, optional
-            Scaling factor applied to charge accumulation (used to be called
-            epsilon). Default: 42.1.
-        tau_slow : float
-            Time decay constant for the slow leaky integrator.
-            Default: 26.25 / 1000 s.
-        scale_slow : float
-            Scaling factor applied to the output of the cascade, to make
-            output values interpretable brightness values >= 0.
-            Default: 1150.0
-        lweight : float
-            Relative weight applied to responses from bipolar cells (weight
-            of ganglion cells is 1).
-            Default: 0.636.
-        aweight : float
-            Relative weight applied to anodic charges (weight of cathodic
-            charges is 1).
-            Default: 0.5.
-        slope : float
-            Slope of the logistic function in the stationary nonlinearity
-            stage. Default: 3. In normalized units of perceptual response
-            perhaps should be 2.98
-        shift : float
-            Shift of the logistic function in the stationary nonlinearity
-            stage. Default: 16. In normalized units of perceptual response
-            perhaps should be 15.9
+        model : str
+            The following ganglion cell models are available:
+
+            - 'Nanduri2012':
+                The temporal sensitivity model of Nanduri et al. (2012).
+                Additional keyword arguments:
+
+                - tau_gcl : float, optional, default: 45.25 ms
+                    Time decay constant for the fast leaky integrater of the
+                    ganglionc ell layer.
+                - tau_inl : float, optional, default: 18 ms
+                    Time decay constant for the fast leaky integrater of the
+                    inner nuclear layer (INL). It has been shown that even
+                    epiretinal arrays can activate bipolar cells (in the INL),
+                    which in turn influence GCL activity.
+                - tau_ca : float, optional, default: 45.25 ms
+                    Time decay constant for the charge accumulation.
+                - scale_ca : float, optional, default: 42.1
+                    Scaling factor applied to charge accumulation (used to be
+                    called epsilon).
+                - tau_slow : float, optional, default: 26.25 ms
+                    Time decay constant for the slow leaky integrator.
+                - scale_slow : float, optional, default: 1150.0
+                    Scaling factor applied to the output of the cascade, to
+                    make output values interpretable brightness values >= 0.
+                - lweight : float, optional, default: 0.636
+                    Relative weight applied to responses from bipolar cells
+                    (weight of ganglion cells is 1).
+                - aweight : float, optional, default: 0.5
+                    Relative weight applied to anodic charges (weight of
+                    cathodic charges is 1).
+                - slope : float, optional, default: 3.0
+                    Slope of the logistic function in the stationary
+                    nonlinearity stage.
+                - shift : float, optional, default: 15.0
+                    Shift of the logistic function in the stationary
+                    nonlinearity stage.
+
+        tsample : float, optional, default: 5 us
+            Sampling time step (seconds).
         """
-        # Generate a a TemporalModel from above specs
-        tm = retina.TemporalModel(tsample=tsample,
-                                  tau_gcl=tau_gcl, tau_inl=tau_inl,
-                                  tau_ca=tau_ca, scale_ca=scale_ca,
-                                  tau_slow=tau_slow, scale_slow=scale_slow,
-                                  lweight=lweight, aweight=aweight,
-                                  slope=slope, shift=shift)
+        if model.lower() in ['nanduri2012', 'nanduri']:
+            logging.getLogger(__name__).info("Setting up Nanduri2012 model.")
+            tm = p2p.retina.Nanduri2012(tsample, **kwargs)
+        else:
+            raise NotImplementedError
+
         self.gcl = tm
 
     def _set_layers(self):
@@ -203,7 +200,7 @@ class Simulation(object):
         if self.ofl is None:
             self.set_optic_fiber_layer()
         if self.gcl is None:
-            self.set_ganglion_cell_layer()
+            self.set_ganglion_cell_layer('Nanduri2012')
 
     def pulse2percept(self, stim, t_percept=None, tol=0.05,
                       layers=['OFL', 'GCL', 'INL']):
@@ -231,6 +228,7 @@ class Simulation(object):
             Default: 0.05.
         layers : list, optional
             A list of retina layers to simulate:
+
             - 'OFL': Includes the optic fiber layer in the simulation.
                      If omitted, the tissue activation map will not account
                      for axon streaks.
@@ -238,6 +236,7 @@ class Simulation(object):
             - 'INL': Includes the inner nuclear layer in the simulation.
                      If omitted, bipolar cell activity does not contribute
                      to ganglion cell activity.
+
             Order of specified layer does not matter.
             Default: ['OFL', 'GCL', 'INL'].
 

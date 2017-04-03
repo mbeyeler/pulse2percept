@@ -5,7 +5,7 @@ import logging
 import pulse2percept as p2p
 
 
-def test_TemporalModel_calc_layer_current():
+def test_Nanduri2012_calc_layer_current():
     tsample = 0.01 / 1000
 
     # Assume 4 electrodes, each getting some stimulation
@@ -29,7 +29,7 @@ def test_TemporalModel_calc_layer_current():
                 ecm_by_hand[1, :] += curr * pt
 
         # And that should be the same as `calc_layer_current`:
-        tm = p2p.retina.TemporalModel(tsample=tsample)
+        tm = p2p.retina.Nanduri2012(tsample=tsample)
         ecm = tm.calc_layer_current(ecs_item, pts, layers)
         npt.assert_almost_equal(ecm, ecm_by_hand)
 
@@ -100,7 +100,7 @@ def test_brightness_movie():
     sim.set_optic_fiber_layer(x_range=[-2, 2], y_range=[-3, 3], sampling=1,
                               save_data=False)
 
-    sim.set_ganglion_cell_layer(tsample)
+    sim.set_ganglion_cell_layer('Nanduri2012', tsample)
 
     logging.getLogger(__name__).info(" - PulseTrain")
     sim.pulse2percept([s1, s1], t_percept=tsample_out)
@@ -143,7 +143,7 @@ def test_debalthasar_threshold():
 
         sim = p2p.Simulation(implant, engine='serial', dojit=True)
         sim.set_optic_fiber_layer(x_range=0, y_range=0, save_data=False)
-        sim.set_ganglion_cell_layer(tsample)
+        sim.set_ganglion_cell_layer('Nanduri2012', tsample)
 
         # For each distance to retina, find the threshold current according
         # to deBalthasar et al. (2008)
