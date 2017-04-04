@@ -315,39 +315,11 @@ class Nanduri2012(TemporalModel):
 
         The output is not converted to a TimeSeries object for speedup.
         """
-        # FFT is faster on non-sparse data
-        if usefft:
-            conv = self.tsample * signal.fftconvolve(stim, gamma, mode='full')
-        else:
-            conv = self.tsample * utils.sparseconv(gamma, stim,
-                                                   mode='full',
-                                                   dojit=dojit)
-            # Cut off the tail of the convolution to make the output signal
-            # match the dimensions of the input signal.
-        return conv[:stim.shape[-1]]
+        conv = utils.conv(stim, gamma, mode='full', method=method, dojit=dojit)
 
-    def charge_accumulation(self, ecm):
-        """Calculates the charge accumulation
-
-        Charge accumulation is calculcalated on the effective input current
-        `ecm`, as opposed to the output of the fast response stage.
-
-        Parameters
-        ----------
-        ecm : array-like
-            A 2D array specifying the effective current values at a particular
-            spatial location (pixel); one value per retinal layer, averaged
-            over all electrodes through that pixel.
-            Dimensions: <#layers x #time points>
-        """
-        ca = np.zeros_like(ecm)
-
-        for i in range(ca.shape[0]):
-            summed = self.tsample * np.cumsum(np.abs(ecm[i, :]))
-            conved = self.tsample * signal.fftconvolve(summed, self.gamma_ca,
-                                                       mode='full')
-            ca[i, :] = self.scale_ca * conved[:ecm.shape[-1]]
-        return ca
+        # Cut off the tail of the convolution to make the output signal
+        # match the dimensions of the input signal.
+        return self.tsample * conv[:stim.shape[-1]]
 
     def stationary_nonlinearity(self, stim):
         """Stationary nonlinearity (Box 4)

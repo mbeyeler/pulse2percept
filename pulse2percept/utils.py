@@ -262,7 +262,7 @@ class TimeSeries(object):
         return TimeSeries(tsample_new, y_new)
 
 
-def _sparseconv(data, kernel, mode):
+def sparseconv(data, kernel, mode):
     """
     Returns the discrete, linear convolution of two one-dimensional sequences.
     output is of length len(kernel) + len(data) -1 (same as the default for
@@ -293,48 +293,10 @@ def _sparseconv(data, kernel, mode):
 
 
 if has_jit:
-    _sparseconvj = jit(_sparseconv)
+    sparseconv = jit(sparseconv)
 
 
-def sparseconv(data, kernel, mode='full', dojit=True):
-    """
-    Returns the discrete, linear convolution of two one-dimensional sequences.
-
-    Can run faster than numpy.convolve if:
-    (1) `data` is much longer than `kernel`
-    (2) `data` is sparse (has lots of zeros)
-
-    Parameters
-    ----------
-    data : array_like
-        First input, typically the data array.
-    kernel : array_like
-        Second input, typically the kernel.
-    mode : str {'full', 'valid', 'same'}, optional
-        A string indicating the size of the output:
-        ``full``
-        The output is the full discrete linear convolution of the inputs.
-        (Default)
-        ``valid``
-        The output consists only of those elements that do not rely on
-        zero-padding.
-        ``same``
-        The output is the same size as `data`, centered with respect to the
-        'full' output.
-    dojit : boolean
-        A flag indicating whether to use numba's just-in-time compilation
-        option.
-
-    """
-    if dojit and not has_jit:
-        e_s = ("You do not have numba ",
-               "please run sparseconv with dojit=False")
-        raise ImportError(e_s)
-    else:
-        return _sparseconv(data, kernel, mode)
-
-
-def conv(data, kernel, tsample, mode='full', method='fft', dojit=True):
+def conv(data, kernel, mode='full', method='fft', dojit=True):
     """Convoles data with a kernel using either FFT or sparseconv
 
     This function convolves data with a kernel, relying either on the
@@ -369,10 +331,15 @@ def conv(data, kernel, tsample, mode='full', method='fft', dojit=True):
     """
     if method.lower() == 'fft':
         # Use FFT: faster on non-sparse data
-        conved = tsample * sps.fftconvolve(data, kernel, mode)
+        conved = sps.fftconvolve(data, kernel, mode)
     elif method.lower() == 'sparse':
         # Use sparseconv: faster on sparse data
-        conved = tsample * sparseconv(data, kernel, mode, dojit)
+        if dojit and not has_jit:
+            e_s = ("You do not have numba ",
+                   "please run sparseconv with dojit=False")
+            raise ImportError(e_s)
+
+        conved = sparseconv(data, kernel, mode)
     else:
         raise ValueError("Acceptable methods are: 'fft', 'sparse'.")
     return conved
