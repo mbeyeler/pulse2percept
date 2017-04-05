@@ -365,7 +365,7 @@ class TemporarilyALegacyModel(TemporalModel):
     def tsample(self):
         return self._tsample
 
-    def fast_response(self, stim, gamma, dojit=True, usefft=False):
+    def fast_response(self, stim, gamma, method, dojit=True):
         """Fast response function (Box 2) for the bipolar layer
 
         Convolve a stimulus `stim` with a temporal low-pass filter (1-stage
@@ -540,7 +540,7 @@ class TemporarilyALegacyModel(TemporalModel):
         if 'INL' in layers:
             fr_inl = self.fast_response(ecm[0], self.gamma_inl,
                                         dojit=dojit,
-                                        usefft=False)
+                                        method='sparse')
 
             # Cathodic and anodic parts are treated separately: They have the
             # same charge accumulation, but anodic currents contribute less to
@@ -554,7 +554,7 @@ class TemporarilyALegacyModel(TemporalModel):
         if ('GCL' or 'OFL') in layers:
             fr_gcl = self.fast_response(ecm[1], self.gamma_gcl,
                                         dojit=dojit,
-                                        usefft=False)
+                                        method='sparse')
 
             # Cathodic and anodic parts are treated separately: They have the
             # same charge accumulation, but anodic currents contribute less to

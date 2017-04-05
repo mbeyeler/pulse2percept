@@ -183,7 +183,7 @@ class Simulation(object):
         """
         if model.lower() in ['nanduri2012', 'nanduri']:
             logging.getLogger(__name__).info("Setting up Nanduri2012 model.")
-            tm = p2p.retina.Nanduri2012(tsample, **kwargs)
+            tm = retina.Nanduri2012(tsample, **kwargs)
         else:
             raise NotImplementedError
 
