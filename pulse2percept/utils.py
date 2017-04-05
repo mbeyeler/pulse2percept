@@ -269,15 +269,15 @@ def sparseconv(data, kernel, mode):
     numpy.convolve).
 
     Can run faster than numpy.convolve if:
-    (1) a is much longer than v
-    (2) a is sparse (has lots of zeros)
+    (1) `data` is much longer than `kernel`
+    (2) `data` is sparse (has lots of zeros)
     """
     kernel_len = kernel.shape[-1]
     data_len = data.shape[-1]
     out = np.zeros(data_len + kernel_len - 1)
 
     pos = np.where(data != 0)[0]
-    # add shifted and scaled copies of kernel only where data is nonzero
+    # Add shifted and scaled copies of `kernel` only where `data` is nonzero
     for p in pos:
         out[p:p + kernel_len] = out[p:p + kernel_len] + kernel * data[p]
 
