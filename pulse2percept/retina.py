@@ -476,6 +476,7 @@ class TemporalModel(object):
             - 'OFL': optic fiber layer
             - 'GCL': ganglion cell layer
             - 'INL': inner nuclear layer
+
         dojit : bool
             If True, applies just-in-time (JIT) compilation to expensive
             computations for additional speed-up (requires Numba).
