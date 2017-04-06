@@ -281,7 +281,7 @@ class Nanduri2012(TemporalModel):
         return self._tsample
 
     def calc_layer_current(self, ecs_item, pt_list, layers):
-        pt_data = [pt.data for pt in pt_list]
+        pt_data = np.array([pt.data for pt in pt_list])
         if 'INL' in layers:
             logging.getLogger(__name__).warn("The Nanduri2012 model does not "
                                              "support an inner nuclear layer.")
@@ -319,7 +319,7 @@ class Nanduri2012(TemporalModel):
         return utils.TimeSeries(self.tsample, b5)
 
 
-class TemporarilyALegacyModel(TemporalModel):
+class LatestModel(TemporalModel):
 
     def __init__(self, tsample, **kwargs):
         self._tsample = tsample

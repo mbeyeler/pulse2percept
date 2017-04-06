@@ -175,8 +175,8 @@ def test_brightness_movie():
 #         # Keep track of brightness
 #         bright.append(resp.data.max())
 
-    # Make sure that all "threshold" currents give roughly the same brightness
-    npt.assert_equal(np.var(bright) < 10.0, True)
+#    # Make sure that all "threshold" currents give roughly the same brightness
+#    npt.assert_equal(np.var(bright) < 10.0, True)
 
 
 def test_ret2dva():

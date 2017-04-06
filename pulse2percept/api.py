@@ -184,6 +184,9 @@ class Simulation(object):
         if model.lower() in ['nanduri2012', 'nanduri']:
             logging.getLogger(__name__).info("Setting up Nanduri2012 model.")
             tm = retina.Nanduri2012(tsample, **kwargs)
+        elif model.lower() == 'latest':
+            logging.getLogger(__name__).info("Setting up latest model.")
+            tm = retina.LatestModel(tsample, **kwargs)
         else:
             raise NotImplementedError
 
