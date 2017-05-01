@@ -50,7 +50,7 @@ class Grid(object):
 
         # Create descriptive filename based on input args
         filename = "%sretina_s%d_l%.1f_rot%.1f_%dx%d.npz" \
-            % (datapath, sampling, axon_lambda, rot / np.pi * 180,
+            % (datapath, sampling, axon_lambda, (float(rot) * 180.0 / np.pi),
                xhi - xlo, yhi - ylo)
 
         # Bool whether we need to create a new grid
