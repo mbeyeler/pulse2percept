@@ -319,6 +319,81 @@ class Nanduri2012(TemporalModel):
         return utils.TimeSeries(self.tsample, b5)
 
 
+class Beyeler2017(TemporalModel):
+
+    def __init__(self, tsample, **kwargs):
+        self._tsample = tsample
+
+        # Set default values of keyword arguments
+        self.tau1 = 0.42 / 1000
+        self.tau2 = 45.25 / 1000
+        self.tau3 = 26.25 / 1000
+        self.eps = 8.73
+        self.asymptote = 14.0
+        self.slope = 3.0
+        self.shift = 16.0
+
+        # Overwrite any given keyword arguments
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                w_s = "Unknown class attribute '%s'" % key
+                logging.getLogger(__name__).warn(w_s)
+                continue
+
+            setattr(self, key, value)
+
+        # perform one-time setup calculations
+        # gamma1 is used for the fast response
+        _, self.gamma1 = utils.gamma(1, self.tau1, self.tsample)
+
+        # gamma2 is used to calculate charge accumulation
+        _, self.gamma2 = utils.gamma(1, self.tau2, self.tsample)
+
+        # gamma3 is used to calculate the slow response
+        _, self.gamma3 = utils.gamma(3, self.tau3, self.tsample)
+
+    @property
+    def tsample(self):
+        return self._tsample
+
+    def calc_layer_current(self, ecs_item, pt_list, layers):
+        pt_data = np.array([pt.data for pt in pt_list])
+        if 'INL' in layers:
+            logging.getLogger(__name__).warn("The Beyeler2017 model does not "
+                                             "support an inner nuclear layer.")
+        if ('GCL' or 'OFL') in layers:
+            ecm = np.sum(ecs_item[1, :, np.newaxis] * pt_data, axis=0)
+        return ecm
+
+    def model_cascade(self, ecs, pt_list, layers, dojit):
+        if 'INL' in layers:
+            logging.getLogger(__name__).warn("The Beyeler2017 model does not "
+                                             "support an inner nuclear layer.")
+
+        # `b1` contains a scaled PulseTrain per layer for this particular
+        # pixel: Use as input to model cascade
+        b1 = self.calc_layer_current(ecs, pt_list, layers)
+
+        # Fast response
+        b2 = self.tsample * utils.conv(b1, self.gamma1, mode='full',
+                                       method='sparse', dojit=dojit)[:b1.size]
+
+        # Desensitization
+        desense = self.tsample * utils.conv(ecs, self.gamma2, mode='full',
+                                            method='sparse')[:b1.size]
+        b3 = np.maximum(0, b2 - self.eps * desense)
+
+        # Stationary nonlinearity
+        sigmoid = ss.expit((b3 - self.shift) / self.slope)
+        b4 = sigmoid * self.asymptote
+
+        # Slow response
+        b5 = self.tsample * utils.conv(b4, self.gamma3, mode='full',
+                                       method='fft')[:b1.size]
+
+        return utils.TimeSeries(self.tsample, b5)
+
+
 class LatestModel(TemporalModel):
 
     def __init__(self, tsample, **kwargs):
