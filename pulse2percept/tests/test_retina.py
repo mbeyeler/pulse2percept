@@ -1,11 +1,66 @@
 import numpy as np
 import numpy.testing as npt
+import pytest
 import logging
 
 import pulse2percept as p2p
 
 
-def test_Nanduri2012_calc_layer_current():
+def test_BaseModel():
+    # Cannot instantiate abstract class
+    with pytest.raises(TypeError):
+        tm = p2p.retina.BaseModel(0.01)
+
+    # Child class must provide `model_cascade()`
+    class Incomplete(p2p.retina.BaseModel):
+        pass
+    with pytest.raises(TypeError):
+        tm = Incomplete()
+
+    # A complete class
+    class Complete(p2p.retina.BaseModel):
+
+        def model_cascade(self, inval):
+            return inval
+
+    tm = Complete(tsample=0.1)
+    npt.assert_equal(tm.tsample, 0.1)
+    npt.assert_equal(tm.model_cascade(2.4), 2.4)
+
+
+def test_Nanduri2012():
+    tsample = 0.01 / 1000
+    tm = p2p.retina.Nanduri2012(tsample=tsample)
+
+    # Assume 4 electrodes, each getting some stimulation
+    pts = [p2p.stimuli.PulseTrain(tsample=tsample, dur=0.1)] * 4
+    ptrain_data = [pt.data for pt in pts]
+
+    # For each of these 4 electrodes, we have two effective current values:
+    # one for the ganglion cell layer, one for the bipolar cell layer
+    ecs_item = np.random.rand(2, 4)
+
+    # Calulating layer current:
+    # The Nanduri model does not support INL, so it's just one layer:
+    with pytest.raises(ValueError):
+        tm.calc_layer_current(ecs_item, ptrain_data, ['GCL', 'INL'])
+    with pytest.raises(ValueError):
+        tm.calc_layer_current(ecs_item, ptrain_data, ['unknown'])
+
+    # ...and that should be the same as `calc_layer_current`:
+    ecm_by_hand = np.sum(ecs_item[1, :, np.newaxis] * ptrain_data, axis=0)
+    ecm = tm.calc_layer_current(ecs_item, ptrain_data, ['GCL'])
+    npt.assert_almost_equal(ecm, ecm_by_hand)
+
+    # Running the model cascade:
+    with pytest.raises(ValueError):
+        tm.model_cascade(ecs_item, ptrain_data, ['GCL', 'INL'], False)
+    with pytest.raises(ValueError):
+        tm.model_cascade(ecs_item, ptrain_data, ['unknown'], False)
+    tm.model_cascade(ecs_item, ptrain_data, ['GCL'], False)
+
+
+def test_TemporalModel():
     tsample = 0.01 / 1000
 
     # Assume 4 electrodes, each getting some stimulation
@@ -16,42 +71,28 @@ def test_Nanduri2012_calc_layer_current():
     # one for the ganglion cell layer, one for the bipolar cell layer
     ecs_item = np.random.rand(2, 4)
 
-    # The Nanduri model does not support INL, so it's just one layer:
-    ecm_by_hand = np.sum(ecs_item[1, :, np.newaxis] * ptrain_data, axis=0)
+    # What we want is the effective current per layer, for all electrodes
+    # added up.
+    # We do this for different layer configurations:
+    for layers in [['INL'], ['GCL'], ['GCL', 'INL']]:
+        ecm_by_hand = np.zeros((2, ptrain_data[0].size))
+        if 'INL' in layers:
+            for curr, pt in zip(ecs_item[0, :], ptrain_data):
+                ecm_by_hand[0, :] += curr * pt
+        if 'GCL' in layers:
+            for curr, pt in zip(ecs_item[1, :], ptrain_data):
+                ecm_by_hand[1, :] += curr * pt
 
-    # And that should be the same as `calc_layer_current`:
-    tm = p2p.retina.Nanduri2012(tsample=tsample)
-    ecm = tm.calc_layer_current(ecs_item, ptrain_data, layers=['GCL'])
-    npt.assert_almost_equal(ecm, ecm_by_hand)
+        # And that should be the same as `calc_layer_current`:
+        tm = p2p.retina.TemporalModel(tsample=tsample)
+        ecm = tm.calc_layer_current(ecs_item, ptrain_data, layers)
+        npt.assert_almost_equal(ecm, ecm_by_hand)
+        tm.model_cascade(ecs_item, ptrain_data, layers, False)
 
-
-# def test_Nanduri2012_calc_layer_current():
-#     tsample = 0.01 / 1000
-
-#     # Assume 4 electrodes, each getting some stimulation
-#     pts = [p2p.stimuli.PulseTrain(tsample=tsample, dur=0.1)] * 4
-#     ptrain_data = [pt.data for pt in pts]
-
-#     # For each of these 4 electrodes, we have two effective current values:
-#     # one for the ganglion cell layer, one for the bipolar cell layer
-#     ecs_item = np.random.rand(2, 4)
-
-#     # What we want is the effective current per layer, for all electrodes
-#     # added up.
-#     # We do this for different layer configurations:
-#     for layers in [['INL'], ['GCL'], ['GCL', 'INL']]:
-#         ecm_by_hand = np.zeros((2, ptrain_data[0].size))
-#         if 'INL' in layers:
-#             for curr, pt in zip(ecs_item[0, :], ptrain_data):
-#                 ecm_by_hand[0, :] += curr * pt
-#         if 'GCL' in layers:
-#             for curr, pt in zip(ecs_item[1, :], ptrain_data):
-#                 ecm_by_hand[1, :] += curr * pt
-
-#         # And that should be the same as `calc_layer_current`:
-#         tm = p2p.retina.Nanduri2012(tsample=tsample)
-#         ecm = tm.calc_layer_current(ecs_item, pts, layers)
-#         npt.assert_almost_equal(ecm, ecm_by_hand)
+    with pytest.raises(ValueError):
+        tm.calc_layer_current(ecs_item, ptrain_data, ['unknown'])
+    with pytest.raises(ValueError):
+        tm.model_cascade(ecs_item, ptrain_data, ['unknown'], False)
 
 
 def test_Retina_Electrodes():
@@ -120,7 +161,7 @@ def test_brightness_movie():
     sim.set_optic_fiber_layer(x_range=[-2, 2], y_range=[-3, 3], sampling=1,
                               save_data=False)
 
-    sim.set_ganglion_cell_layer('Nanduri2012', tsample)
+    sim.set_ganglion_cell_layer('latest', tsample=tsample)
 
     logging.getLogger(__name__).info(" - PulseTrain")
     sim.pulse2percept([s1, s1], t_percept=tsample_out)
@@ -163,7 +204,7 @@ def test_brightness_movie():
 
 #         sim = p2p.Simulation(implant, engine='serial', dojit=True)
 #         sim.set_optic_fiber_layer(x_range=0, y_range=0, save_data=False)
-#         sim.set_ganglion_cell_layer('Nanduri2012', tsample)
+#         sim.set_ganglion_cell_layer('latest', tsample=tsample)
 
 #         # For each distance to retina, find the threshold current according
 #         # to deBalthasar et al. (2008)
@@ -175,8 +216,8 @@ def test_brightness_movie():
 #         # Keep track of brightness
 #         bright.append(resp.data.max())
 
-#    # Make sure that all "threshold" currents give roughly the same brightness
-#    npt.assert_equal(np.var(bright) < 10.0, True)
+#     # Make sure that all "threshold" currents give roughly the same brightness
+#     npt.assert_equal(np.var(bright) < 10.0, True)
 
 
 def test_ret2dva():
