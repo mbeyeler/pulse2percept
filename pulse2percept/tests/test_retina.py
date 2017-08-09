@@ -7,6 +7,44 @@ import logging
 import pulse2percept as p2p
 
 
+def test_RetinalGrid():
+
+    x_range = (-4.0, 2.0)
+    y_range = (-10.0, 7.0)
+    for x_steps in [2, 4, 8]:
+        for y_steps in [2, 4, 8]:
+            grid = p2p.retina.RetinalGrid(x_steps=x_steps, y_steps=y_steps,
+                                          x_range=x_range, y_range=y_range)
+            npt.assert_equal(grid.xg.shape, (y_steps, x_steps))
+            npt.assert_equal(grid.yg.shape, (y_steps, x_steps))
+            npt.assert_equal(grid.xg[0, 0], x_range[0])
+            npt.assert_equal(grid.yg[0, 0], y_range[0])
+            npt.assert_equal(grid.xg[-1, -1], x_range[1])
+            npt.assert_equal(grid.yg[-1, 1], y_range[1])
+
+    # Test the ``contains`` method
+    grid = p2p.retina.RetinalGrid(x_steps=11, x_range=(-5, 5), y_steps=11,
+                                  y_range=(-5, 5))
+    for xpos in [-5, -2.5, 0, 4.5, 5]:
+        # All these points (x, x) are within grid limits
+        npt.assert_equal(grid.contains(xpos, xpos), True)
+        npt.assert_equal(grid.contains([xpos, xpos]), True)
+        npt.assert_equal(grid.contains([[xpos, xpos], [xpos, xpos]]), True)
+    for xpos in [-6, 6, 100]:
+        # All these points (x, x) are outside grid limits
+        npt.assert_equal(grid.contains(xpos, xpos), False)
+        npt.assert_equal(grid.contains([xpos, xpos]), False)
+        npt.assert_equal(grid.contains([[xpos, xpos], [xpos, xpos]]), False)
+
+    # Test the ``get_closest_point`` method
+    for xpos in [-4.8, -3.05, 0.01, 4.51]:
+        # For the above grid, this method should round to the nearest int
+        closest = grid.get_closest_point(xpos, xpos)
+        npt.assert_almost_equal(closest, np.round(xpos))
+        closest = grid.get_closest_point([xpos, xpos])
+        npt.assert_almost_equal(closest, np.round(xpos))
+
+
 def test_BaseModel():
     # Cannot instantiate abstract class
     with pytest.raises(TypeError):

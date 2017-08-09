@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.special as ss
+import scipy.spatial as spat
 import abc
 import six
 import os.path
@@ -10,6 +11,137 @@ from pulse2percept import utils
 
 SUPPORTED_LAYERS = ['INL', 'GCL', 'OFL']
 SUPPORTED_TEMPORAL_MODELS = ['latest', 'Nanduri2012', 'Horsager2009']
+
+
+class RetinalGrid(object):
+
+    def __init__(self, x_steps=101, x_range=(-20.0, 20.0), y_steps=101,
+                 y_range=(-20.0, 20.0)):
+        """Generates a spatial grid representing the retinal coordinate frame
+
+        This function generates the coordinate system for the retina.
+
+        Parameters
+        ----------
+        x_steps : int, optional, default: 101
+            Number of samples to generate along the x axis (horizontal).
+        x_range : tuple (xlo, xhi), optional, default: (-20.0, 20.0)
+            Lower and upper bounds along the x axis (horizontal) in degrees
+            of visual angle.        
+        y_steps : int, optional, default: 101
+            Number of samples to generate along the y axis (vertical).
+        y_range : tuple (ylo, yhi), optional, default: (-20.0, 20.0)
+            Lower and upper bounds along the y axis (vertical) in degrees
+            of visual angle. The lower hemisphere of the retina (i.e., the
+            inferior retina that corresponds to the upper visual field) has
+            negative y values.
+        """
+        xlo, xhi = x_range
+        ylo, yhi = y_range
+        self.xg, self.yg = np.meshgrid(np.linspace(xlo, xhi, x_steps),
+                                       np.linspace(ylo, yhi, y_steps),
+                                       indexing='xy')
+
+        # Create KDTree from grid
+        pos_xy = np.column_stack((self.xg.ravel(), self.yg.ravel()))
+        self.tree = spat.cKDTree(pos_xy)
+
+    def contains(self, x, y=None):
+        """Returns True if a point / set of points are within grid limits
+
+        This function returns True if a point is within the range of x, y
+        values of the grid.
+
+        Parameters
+        ----------
+        x : float|vector|array
+            If `x` is a float, it is interpreted as the x coordinate of a
+            single point. In this case, `y` must be specified.
+            If `x` is a Nx1 vector, it is interpreted as the x coordinates of
+            N points, for which `y` must be specified.
+            If `x` is a Nx2 array, it is interpreted as both x and y
+            coordinates of N points.
+        y : float|vector, optional, default: None
+            The y coordinate of a single point / the y coordinates of a set of
+            points.
+
+        Returns
+        -------
+        idx_valid : bool|vector
+            For every specified data point, where it lies within (True) or
+            outside (False) grid limits.
+
+        Examples
+        --------
+        >>> import pulse2percept as p2p
+        >>> grid = p2p.retina.RetinalGrid(x_steps=3, x_range=(-1, 1),
+        ...                               y_steps=3, y_range=(-1, 1))
+        >>> grid.contains(0.95, 0.95)
+        True
+        >>> grid.contains([1.01, 1.01])
+        False
+        """
+        if y is None:
+            xy = np.array(x).reshape((-1, 2))
+        else:
+            x = np.array([x])
+            y = np.array([y])
+            xy = np.column_stack((x, y))
+
+        idx_valid = (xy[:, 0] >= self.xg.min()) * (xy[:, 0] <= self.xg.max())
+        idx_valid *= (xy[:, 1] >= self.yg.min()) * (xy[:, 1] <= self.yg.max())
+
+        if len(idx_valid) == 1:
+            # Return as scalar
+            idx_valid = idx_valid[0]
+        return idx_valid
+
+    def get_closest_point(self, x, y=None):
+        """Returns the closest point on the grid
+
+        This function returns the point on the grid that is closest to the
+        specified location.
+
+        Parameters
+        ----------
+        x : float|vector|array
+            If `x` is a float, it is interpreted as the x coordinate of a
+            single point. In this case, `y` must be specified.
+            If `x` is a Nx1 vector, it is interpreted as the x coordinates of
+            N points, for which `y` must be specified.
+            If `x` is a Nx2 array, it is interpreted as both x and y
+            coordinates of N points.
+        y : float|vector, optional, default: None
+            The y coordinate of a single point / the y coordinates of a set of
+            points.
+
+        Returns
+        -------
+        x, y : float|vector, float|vector
+            The x and y coordinate(s) of the closest point(s) on the grid.
+
+        Examples
+        --------
+        >>> import pulse2percept as p2p
+        >>> grid = p2p.retina.RetinalGrid(x_steps=3, x_range=(-1, 1),
+        ...                               y_steps=3, y_range=(-1, 1))
+        >>> grid.get_closest_point(0.05, 0.8)
+        (0.0, 1.0)
+        >>> grid.get_closest_point([0.51, 0.49])
+        (1.0, 0.0)
+        """
+        if y is None:
+            xy = np.array(x).reshape((-1, 2))
+        else:
+            x = np.array([x])
+            y = np.array([y])
+            xy = np.column_stack((x, y))
+
+        _, idx = self.tree.query(xy)
+        if len(idx) == 1:
+            # Return a scalar
+            idx = idx[0]
+        return self.xg.ravel()[idx], self.yg.ravel()[idx]
 
 
 class Grid(object):
