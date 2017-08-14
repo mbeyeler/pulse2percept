@@ -8,7 +8,6 @@ import pulse2percept as p2p
 
 
 def test_RetinalGrid():
-
     x_range = (-4.0, 2.0)
     y_range = (-10.0, 7.0)
     for x_steps in [2, 4, 8]:
@@ -21,6 +20,14 @@ def test_RetinalGrid():
             npt.assert_equal(grid.yg[0, 0], y_range[0])
             npt.assert_equal(grid.xg[-1, -1], x_range[1])
             npt.assert_equal(grid.yg[-1, 1], y_range[1])
+
+    # Test single-pixel retinas
+    for pos in [-100.0, 0.0, 4.2]:
+        grid = p2p.retina.RetinalGrid(x_steps=1, y_steps=1,
+                                      x_range=(pos, pos),
+                                      y_range=(pos, pos))
+        npt.assert_equal(grid.xg.size, 1)
+        npt.assert_equal(grid.yg.size, 1)
 
     # Test the ``contains`` method
     grid = p2p.retina.RetinalGrid(x_steps=11, x_range=(-5, 5), y_steps=11,

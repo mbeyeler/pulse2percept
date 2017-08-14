@@ -51,7 +51,78 @@ class Simulation(object):
         # this variable will contain a `retina.TemporalModel` object.
         self.gcl = None
 
-    def set_optic_fiber_layer(self, sampling=100, axon_lambda=2, x_range=None,
+    def set_retinal_grid(self, x_steps=101, x_range=None, y_steps=101,
+                         y_range=None):
+        """Sets parameters of the spatial grid representing the retinal
+           coordinate frame
+
+        This function generates the coordinate system for the retina (in
+        microns) to be used by all retinal layers.
+
+        Parameters
+        ----------
+        x_steps : int, optional, default: 101
+            Number of samples to generate along the x axis (horizontal).
+        x_range : float xpos | tuple (xlo, xhi) | None, optional, default: None
+            Lower and upper bound of the retinal grid (microns) in horizontal
+            dimension. Either a tuple (`xlo`, `xhi`), float `xpos` or None.
+            If None, the generated grid will be just big enough to fit the
+            implant.
+        y_steps : int, optional, default: 101
+            Number of samples to generate along the y axis (vertical).
+        y_range : float ypos | tuple (ylo, yhi) | None, optional, default: None
+            Lower and upper bound of the retinal grid (microns) in vertical
+            dimension. Either a tuple (`ylo`, `yhi`), float `ypos` or None.
+            If None, the generated grid will be just big enough to fit the
+            implant.
+        """
+        # For auto-generated grids:
+        round_to = 500  # round to nearest (microns)
+        cspread = 500  # add padding for current spread (microns)
+
+        if x_range is None:
+            # No x ranges given: generate automatically to fit the implant
+            xs = [a.x_center for a in self.implant]
+            xlo = np.floor((np.min(xs) - cspread) / round_to) * round_to
+            xhi = np.ceil((np.max(xs) + cspread) / round_to) * round_to
+        elif isinstance(x_range, (int, float)):
+            xlo = x_range
+            xhi = x_range
+            x_steps = 1
+        elif isinstance(x_range, (list, tuple, np.ndarray)):
+            if len(x_range) != 2 or x_range[1] < x_range[0]:
+                e_s = ("`x_range` must be a tuple (`xlo`, `xhi`) where "
+                       "`xlo` <= `xhi`.")
+                raise ValueError(e_s)
+            xlo = x_range[0]
+            xhi = x_range[1]
+        else:
+            raise ValueError("`x_range` must be a tuple (`xlo`, `xhi`) or "
+                             "None.")
+
+        if y_range is None:
+            # No y ranges given: generate automatically to fit the implant
+            ys = [a.y_center for a in self.implant]
+            ylo = np.floor((np.min(ys) - cspread) / round_to) * round_to
+            yhi = np.ceil((np.max(ys) + cspread) / round_to) * round_to
+        elif isinstance(y_range, (int, float)):
+            ylo = y_range
+            yhi = y_range
+            y_steps = 1
+        elif isinstance(y_range, (list, tuple, np.ndarray)):
+            if len(y_range) != 2 or y_range[1] < y_range[0]:
+                e_s = ("`y_range` must be a tuple (`ylo`, `yhi`) where "
+                       "`ylo` <= `yhi`.")
+                raise ValueError(e_s)
+            ylo = y_range[0]
+            yhi = y_range[1]
+        else:
+            raise ValueError("`y_range` must be a tuple (`ylo`, `yhi`) or "
+                             "None.")
+        self.grid = p2p.retina.RetinalGrid(x_steps=x_steps, x_range=(xlo, xhi),
+                                           y_steps=y_steps, y_range=(ylo, yhi))
+
+    def set_optic_fiber_layer(self, sampling=None, axon_lambda=2, x_range=None,
                               y_range=None, datapath='.', save_data=True):
         """Sets parameters of the optic fiber layer (OFL)
 
@@ -77,43 +148,34 @@ class Simulation(object):
             (False). The file name is automatically generated from all
             specified input arguments.
         """
-        # For auto-generated grids:
-        round_to = 500  # round to nearest (microns)
-        cspread = 500  # add padding for current spread (microns)
 
-        if x_range is None:
-            # No x ranges given: generate automatically to fit the implant
-            xs = [a.x_center for a in self.implant]
-            xlo = np.floor((np.min(xs) - cspread) / round_to) * round_to
-            xhi = np.ceil((np.max(xs) + cspread) / round_to) * round_to
-        elif isinstance(x_range, (int, float)):
-            xlo = x_range
-            xhi = x_range
-        elif isinstance(x_range, (list, tuple, np.ndarray)):
-            if len(x_range) != 2 or x_range[1] < x_range[0]:
-                e_s = "x_range must be a list [xlo, xhi] where xlo <= xhi."
-                raise ValueError(e_s)
-            xlo = x_range[0]
-            xhi = x_range[1]
-        else:
-            raise ValueError("x_range must be a list [xlo, xhi] or None.")
+        # Backwards compatibility: Make sure retinal grid is set up
+        if any([p is None for p in [sampling, x_range, y_range]]):
+            w_s = ("The use of `sampling`, `x_range`, and `y_range` is "
+                   "deprecated as of v0.3 and will be removed in v0.4. Use "
+                   "``p2p.set_retinal_grid`` instead.")
+            logging.getLogger(__name__).warn(w_s)
 
-        if y_range is None:
-            # No y ranges given: generate automatically to fit the implant
-            ys = [a.y_center for a in self.implant]
-            ylo = np.floor((np.min(ys) - cspread) / round_to) * round_to
-            yhi = np.ceil((np.max(ys) + cspread) / round_to) * round_to
-        elif isinstance(y_range, (int, float)):
-            ylo = y_range
-            yhi = y_range
-        elif isinstance(y_range, (list, tuple, np.ndarray)):
-            if len(y_range) != 2 or y_range[1] < y_range[0]:
-                e_s = "y_range must be a list [ylo, yhi] where ylo <= yhi."
-                raise ValueError(e_s)
-            ylo = y_range[0]
-            yhi = y_range[1]
-        else:
-            raise ValueError("y_range must be a list [ylo, yhi] or None.")
+            if self.grid is not None:
+                w_s = ("Retinal grid already set up. Ignoring `sampling`, "
+                       "`x_range`, and `y_range`.")
+                logging.getLogger(__name__).warn(w_s)
+            else:
+                # Need to convert `sampling` (which is an ``np.arange`` step
+                # size) to `x_steps`, `y_steps` (which are both number of steps
+                # for ``np.linspace``)
+                x_steps = y_steps = 101
+                if isinstance(x_range, (int, float)):
+                    x_steps = 1
+                elif isinstance(x_range, (list, tuple, np.ndarray)):
+                    x_steps = int(np.ceil(np.diff(x_range) / sampling))
+                if isinstance(y_range, (int, float)):
+                    y_steps = 1
+                elif isinstance(y_range, (list, tuple, np.ndarray)):
+                    y_steps = int(np.ceil(np.diff(y_range) / sampling))
+
+                self.set_retinal_grid(x_steps=x_steps, x_range=x_range,
+                                      y_steps=y_steps, y_range)
 
         # Generate the grid from the above specs
         self.ofl = retina.Grid(x_range=(xlo, xhi), y_range=(ylo, yhi),

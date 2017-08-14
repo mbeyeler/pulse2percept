@@ -15,26 +15,25 @@ SUPPORTED_TEMPORAL_MODELS = ['latest', 'Nanduri2012', 'Horsager2009']
 
 class RetinalGrid(object):
 
-    def __init__(self, x_steps=101, x_range=(-20.0, 20.0), y_steps=101,
-                 y_range=(-20.0, 20.0)):
+    def __init__(self, x_steps=101, x_range=(-5000.0, 5000.0), y_steps=101,
+                 y_range=(-5000.0, 5000.0)):
         """Generates a spatial grid representing the retinal coordinate frame
 
-        This function generates the coordinate system for the retina.
+        This function generates the coordinate system for the retina (in
+        microns).
 
         Parameters
         ----------
         x_steps : int, optional, default: 101
             Number of samples to generate along the x axis (horizontal).
-        x_range : tuple (xlo, xhi), optional, default: (-20.0, 20.0)
-            Lower and upper bounds along the x axis (horizontal) in degrees
-            of visual angle.        
+        x_range : tuple (xlo, xhi), optional, default: (-5000.0, 5000.0)
+            Lower and upper bounds along the x axis (horizontal) in microns.
         y_steps : int, optional, default: 101
             Number of samples to generate along the y axis (vertical).
-        y_range : tuple (ylo, yhi), optional, default: (-20.0, 20.0)
-            Lower and upper bounds along the y axis (vertical) in degrees
-            of visual angle. The lower hemisphere of the retina (i.e., the
-            inferior retina that corresponds to the upper visual field) has
-            negative y values.
+        y_range : tuple (ylo, yhi), optional, default: (-5000.0, 5000.0)
+            Lower and upper bounds along the y axis (vertical) in microns.
+            The lower hemisphere of the retina (i.e., the inferior retina that
+            corresponds to the upper visual field) has negative y values.
         """
         xlo, xhi = x_range
         ylo, yhi = y_range
@@ -144,6 +143,229 @@ class RetinalGrid(object):
         return self.xg.ravel()[idx], self.yg.ravel()[idx]
 
 
+def jansonius2009(phi0, n_rho=801, rho_range=(4.0, 45.0),
+                  loc_od=(15.0, 2.0), beta_sup=-1.9, beta_inf=0.5):
+    """Grows a single axon bundle based on the model by Jansonius et al. (2009)
+
+    This function generates the trajectory of a single nerve fiber bundle
+    based on the mathematical model described in:
+
+    > Jansionus et al. (2009). A mathematical description of nerve fiber
+    > bundle trajectories and their variability in the human retina. Vis
+    > Res 49: 2157-2163.
+
+    Parameters
+    ----------
+    phi0 : float
+        Angular position of the axon at its starting point (polar
+        coordinates, degrees). Must be within [-180, 180].
+    n_rho : int, optional, default: 801
+        Number of sampling points along the radial axis (polar coordinates).
+    rho_range : (rho_min, rho_max), optional, default: (4.0, 45.0)
+        Lower and upper bounds for the radial position values (polar
+        coordinates).
+    loc_od : (x_od, y_od), optional, default: (15.0, 2.0)
+        Location of the center of the optic disc (x, y) in Cartesian
+        coordinates.
+    beta_sup : float, optional, default: -1.9
+        Scalar value for the superior retina (see Eq. 5, `\beta_s` in the
+        paper).
+    beta_inf : float, optional, default: 0.5
+        Scalar value for the inferior retina (see Eq. 6, `\beta_i` in the
+        paper.)
+
+    Returns
+    -------
+    ax_pos: Nx2 array
+        Returns a two-dimensional array of axonal positions, where ax_pos[0, :]
+        contains the (x, y) coordinates of the axon segment closest to the
+        optic disc, and aubsequent row indices move the axon away from the
+        optic disc. Number of rows is at most `n_rho`, but might be smaller if
+        the axon crosses the meridian.
+
+    Notes
+    -----
+    The study did not include axons with phi0 in [-60, 60] deg.
+    """
+    if np.abs(phi0) > 180.0:
+        raise ValueError('phi0 must be within [-180, 180].')
+    if n_rho < 1:
+        raise ValueError('Number of radial sampling points must be >= 1.')
+    if np.any(np.array(rho_range) < 0):
+        raise ValueError('rho cannot be negative.')
+    if rho_range[0] > rho_range[1]:
+        raise ValueError('Lower bound on rho cannot be larger than the '
+                         ' upper bound.')
+    is_superior = phi0 > 0
+    rho = np.linspace(rho_range[0], rho_range[1], n_rho)
+
+    if is_superior:
+        # Axon is in superior retina, compute `b` (real number) from Eq. 5:
+        b = np.exp(beta_sup + 3.9 * np.tanh(-(phi0 - 121.0) / 14.0))
+        # Equation 3, `c` a positive real number:
+        c = 1.9 + 1.4 * np.tanh((phi0 - 121.0) / 14.0)
+    else:
+        # Axon is in inferior retina: compute `b` (real number) from Eq. 6:
+        b = -np.exp(beta_inf + 1.5 * np.tanh(-(-phi0 - 90.0) / 25.0))
+        # Equation 4, `c` a positive real number:
+        c = 1.0 + 0.5 * np.tanh((-phi0 - 90.0) / 25.0)
+
+    # Spiral as a function of `rho`:
+    phi = phi0 + b * (rho - rho.min()) ** c
+
+    # Convert to Cartesian coordinates
+    xprime = rho * np.cos(np.deg2rad(phi))
+    yprime = rho * np.sin(np.deg2rad(phi))
+
+    # Find the array elements where the axon crosses the meridian
+    if is_superior:
+        # Find elements in inferior retina
+        idx = np.where(yprime < 0)[0]
+    else:
+        # Find elements in superior retina
+        idx = np.where(yprime > 0)[0]
+    if idx.size:
+        # Keep only up to first occurrence
+        xprime = xprime[:idx[0]]
+        yprime = yprime[:idx[0]]
+
+    # Adjust coordinate system, having fovea=[0, 0] instead of `loc_od`=[0, 0]
+    xmodel = xprime + loc_od[0]
+    ymodel = yprime
+    if loc_od[0] > 0:
+        # If x-coordinate of optic disc is positive, use Appendix A
+        idx = xprime > -loc_od[0]
+    else:
+        # Else we need to flip the sign
+        idx = xprime < -loc_od[0]
+    ymodel[idx] = yprime[idx] + loc_od[1] * (xmodel[idx] / loc_od[0]) ** 2
+
+    # Return as Nx2 array
+    return np.vstack((xmodel, ymodel)).T
+
+
+class OpticFiberLayer(object):
+
+    def __init__(self, datapath='.', save_data=True):
+        """
+        datapath : str, default: current directory
+            Relative path where to look for existing retina files, and where to
+            store new retina files.
+        save_data : bool, default: True
+            Flag whether to save the data to a new retina file (True) or not
+            (False). The file name is automatically generated from all
+            specified input arguments.
+        """
+
+    def grow_axon_bundles(self, n_axons, phi_range=(-180.0, 180.0), n_rho=801,
+                          rho_range=(4.0, 45.0), beta_sup=-1.9, beta_inf=0.5,
+                          loc_od=(15.0, 2.0), engine='joblib', n_jobs=-1,
+                          scheduler='threading'):
+        """Grows axon bundles based on the model by Jansonius et al. (2009)
+
+        This function generates the trajectory of `n_axons` nerve fiber bundles
+        based on the mathematical model described in:
+
+        > Jansionus et al. (2009). A mathematical description of nerve fiber
+        > bundle trajectories and their variability in the human retina. Vis
+        > Res 49: 2157-2163.
+
+        Parameters
+        ----------
+        n_axons : int
+            The number of axons to generate. Their start orientations `phi0`
+            (in modified polar coordinates) will be sampled uniformly from
+            `phi_range`.
+        phi_range : (lophi, hiphi)
+            Range of angular positions of axon fibers at their starting points
+            (polar coordinates, degrees) to be sampled uniformly with `n_axons`
+            samples. Must be within [-180, 180].
+        n_rho : int, optional, default: 801
+            Number of sampling points along the radial axis (polar
+            coordinates).
+        rho_range : (rho_min, rho_max), optional, default: (4.0, 45.0)
+            Lower and upper bounds for the radial position values (polar
+            coordinates).
+        loc_od : (x_od, y_od), optional, default: (15.0, 2.0)
+            Location of the center of the optic disc (x, y) in Cartesian
+            coordinates.
+        beta_sup : float, optional, default: -1.9
+            Scalar value for the superior retina (see Eq. 5, $\beta_s$ in the
+            paper).
+        beta_inf : float, optional, default: 0.5
+            Scalar value for the inferior retina (see Eq. 6, $\beta_i$ in the
+            paper.)
+        engine : str, optional, default: 'joblib'
+            Which computational back end to use:
+            - 'serial': Single-core computation
+            - 'joblib': Parallelization via joblib (requires `pip install
+                        joblib`).
+            - 'dask': Parallelization via dask (requires `pip install dask`).
+        scheduler : str, optional, default: 'threading'
+            Which scheduler to use (irrelevant for 'serial' engine):
+            - 'threading': a scheduler backed by a thread pool
+            - 'multiprocessing': a scheduler backed by a process pool
+        n_jobs : int, optional, default: -1
+            Number of cores (threads) to run the model on in parallel. Specify
+            -1 to use as many cores as available.
+
+        Returns
+        -------
+        axons: list of Nx2 arrays
+            For every generated axon bundle, returns a two-dimensional array of
+            axonal positions, where ax_pos[0, :] contains the (x, y)
+            coordinates of the axon segment closest to the optic disc, and
+            subsequent row indices move the axon away from the optic disc.
+            Number of rows is at most `n_rho`, but might be smaller if the axon
+            crosses the meridian.
+        """
+        if n_axons < 1:
+            raise ValueError('Number of axons must be >= 1.')
+        if np.any(np.abs(phi_range) > 180.0):
+            raise ValueError('phi must be within [-180, 180].')
+        if phi_range[0] > phi_range[1]:
+            raise ValueError('Lower bound on phi cannot be larger than the '
+                             'upper bound.')
+
+        phi = np.linspace(phi_range[0], phi_range[1], n_axons)
+        func_kwargs = {'n_rho': n_rho, 'rho_range': rho_range,
+                       'beta_sup': beta_sup, 'beta_inf': beta_inf,
+                       'loc_od': loc_od}
+        axons = utils.parfor(jansonius2009, phi, func_kwargs=func_kwargs,
+                             engine=engine, scheduler=scheduler, n_jobs=n_jobs)
+        return axons
+
+    def find_closest_axon(pos_xy, axon_bundles):
+        xneuron, yneuron = pos_xy
+        # find the nearest axon to this pixel
+        dist = [min((ax[:, 0] - xneuron) ** 2 + (ax[:, 1] - yneuron) ** 2)
+                for ax in axon_bundles]
+        axon_id = np.argmin(dist)
+
+        # find the position on the axon
+        ax = axon_bundles[axon_id]
+        dist = (ax[:, 0] - xneuron) ** 2 + (ax[:, 1] - yneuron) ** 2
+        pos_id = np.argmin(dist)
+
+        # add all positions: from `pos_id` to the optic disc
+        return axon_bundles[axon_id][pos_id:0:-1, :]
+
+    def assign_axons(grid, axon_bundles, engine='joblib',
+                     scheduler='threading', n_jobs=-1):
+        # Let's say we want a neuron at every pixel location.
+        # We loop over all (x, y) locations and find the closest axon:
+        pos_xy = [(x, y) for x, y in zip(grid.xg.ravel(), grid.yg.ravel())]
+        return p2p.utils.parfor(find_closest_axon, pos_xy, func_args=[axon_bundles])
+
+    def get_tissue_activation_map(self, grid):
+        pass
+
+    def predict_response(self, stim, grid):
+        pass
+
+
+@utils.deprecated(alt_func='p2p.retina.OpticFiberLayer',
+                  deprecated_version='0.3', removed_version='0.4')
 class Grid(object):
     """Represent the retinal coordinate frame"""
 
@@ -1004,6 +1226,20 @@ def ret2dva(r_um):
     return sign * r_deg
 
 
+def dva2ret(r_deg):
+    """Converts visual angles (deg) into retinal distances (um)
+
+    This function converts a retinal distancefrom the optic axis (um)
+    into degrees of visual angle.
+    Source: Eq. A5 in Watson (2014), J Vis 14(7):15, 1-17
+    """
+    sign = np.sign(r_deg)
+    r_deg = np.abs(r_deg)
+    r_mm = 0.268 * r_deg + 3.427e-4 * r_deg ** 2 - 8.3309e-6 * r_deg ** 3
+    r_um = 1e3 * r_mm
+    return sign * r_um
+
+
 @utils.deprecated(alt_func='p2p.retina.ret2dva', deprecated_version='0.2',
                   removed_version='0.3')
 def micron2deg(micron):
@@ -1024,197 +1260,6 @@ def deg2micron(deg):
     """
     microns = 280.0 * deg
     return microns
-
-
-def dva2ret(r_deg):
-    """Converts visual angles (deg) into retinal distances (um)
-
-    This function converts a retinal distancefrom the optic axis (um)
-    into degrees of visual angle.
-    Source: Eq. A5 in Watson (2014), J Vis 14(7):15, 1-17
-    """
-    sign = np.sign(r_deg)
-    r_deg = np.abs(r_deg)
-    r_mm = 0.268 * r_deg + 3.427e-4 * r_deg ** 2 - 8.3309e-6 * r_deg ** 3
-    r_um = 1e3 * r_mm
-    return sign * r_um
-
-
-def jansonius2009(phi0, n_rho=801, rho_range=(4.0, 45.0),
-                  loc_od=(15.0, 2.0), beta_sup=-1.9, beta_inf=0.5):
-    """Grows a single axon bundle based on the model by Jansonius et al. (2009)
-
-    This function generates the trajectory of a single nerve fiber bundle
-    based on the mathematical model described in:
-
-    > Jansionus et al. (2009). A mathematical description of nerve fiber
-    > bundle trajectories and their variability in the human retina. Vis
-    > Res 49: 2157-2163.
-
-    Parameters
-    ----------
-    phi0 : float
-        Angular position of the axon at its starting point (polar
-        coordinates, degrees). Must be within [-180, 180].
-    n_rho : int, optional, default: 801
-        Number of sampling points along the radial axis (polar coordinates).
-    rho_range : (rho_min, rho_max), optional, default: (4.0, 45.0)
-        Lower and upper bounds for the radial position values (polar
-        coordinates).
-    loc_od : (x_od, y_od), optional, default: (15.0, 2.0)
-        Location of the center of the optic disc (x, y) in Cartesian
-        coordinates.
-    beta_sup : float, optional, default: -1.9
-        Scalar value for the superior retina (see Eq. 5, `\beta_s` in the
-        paper).
-    beta_inf : float, optional, default: 0.5
-        Scalar value for the inferior retina (see Eq. 6, `\beta_i` in the
-        paper.)
-
-    Returns
-    -------
-    ax_pos: Nx2 array
-        Returns a two-dimensional array of axonal positions, where ax_pos[0, :]
-        contains the (x, y) coordinates of the axon segment closest to the
-        optic disc, and aubsequent row indices move the axon away from the
-        optic disc. Number of rows is at most `n_rho`, but might be smaller if
-        the axon crosses the meridian.
-
-    Notes
-    -----
-    The study did not include axons with phi0 in [-60, 60] deg.
-    """
-    if np.abs(phi0) > 180.0:
-        raise ValueError('phi0 must be within [-180, 180].')
-    if n_rho < 1:
-        raise ValueError('Number of radial sampling points must be >= 1.')
-    if np.any(np.array(rho_range) < 0):
-        raise ValueError('rho cannot be negative.')
-    if rho_range[0] > rho_range[1]:
-        raise ValueError('Lower bound on rho cannot be larger than the '
-                         ' upper bound.')
-    is_superior = phi0 > 0
-    rho = np.linspace(rho_range[0], rho_range[1], n_rho)
-
-    if is_superior:
-        # Axon is in superior retina, compute `b` (real number) from Eq. 5:
-        b = np.exp(beta_sup + 3.9 * np.tanh(-(phi0 - 121.0) / 14.0))
-        # Equation 3, `c` a positive real number:
-        c = 1.9 + 1.4 * np.tanh((phi0 - 121.0) / 14.0)
-    else:
-        # Axon is in inferior retina: compute `b` (real number) from Eq. 6:
-        b = -np.exp(beta_inf + 1.5 * np.tanh(-(-phi0 - 90.0) / 25.0))
-        # Equation 4, `c` a positive real number:
-        c = 1.0 + 0.5 * np.tanh((-phi0 - 90.0) / 25.0)
-
-    # Spiral as a function of `rho`:
-    phi = phi0 + b * (rho - rho.min()) ** c
-
-    # Convert to Cartesian coordinates
-    xprime = rho * np.cos(np.deg2rad(phi))
-    yprime = rho * np.sin(np.deg2rad(phi))
-
-    # Find the array elements where the axon crosses the meridian
-    if is_superior:
-        # Find elements in inferior retina
-        idx = np.where(yprime < 0)[0]
-    else:
-        # Find elements in superior retina
-        idx = np.where(yprime > 0)[0]
-    if idx.size:
-        # Keep only up to first occurrence
-        xprime = xprime[:idx[0]]
-        yprime = yprime[:idx[0]]
-
-    # Adjust coordinate system, having fovea=[0, 0] instead of `loc_od`=[0, 0]
-    xmodel = xprime + loc_od[0]
-    ymodel = yprime
-    if loc_od[0] > 0:
-        # If x-coordinate of optic disc is positive, use Appendix A
-        idx = xprime > -loc_od[0]
-    else:
-        # Else we need to flip the sign
-        idx = xprime < -loc_od[0]
-    ymodel[idx] = yprime[idx] + loc_od[1] * (xmodel[idx] / loc_od[0]) ** 2
-
-    # Return as Nx2 array
-    return np.vstack((xmodel, ymodel)).T
-
-
-def grow_axon_bundles(n_axons, phi_range=(-180.0, 180.0), n_rho=801,
-                      rho_range=(4.0, 45.0), beta_sup=-1.9, beta_inf=0.5,
-                      loc_od=(15.0, 2.0), engine='joblib', n_jobs=-1,
-                      scheduler='threading'):
-    """Grows axon bundles based on the model by Jansonius et al. (2009)
-
-    This function generates the trajectory of `n_axons` nerve fiber bundles
-    based on the mathematical model described in:
-
-    > Jansionus et al. (2009). A mathematical description of nerve fiber
-    > bundle trajectories and their variability in the human retina. Vis
-    > Res 49: 2157-2163.
-
-    Parameters
-    ----------
-    n_axons : int
-        The number of axons to generate. Their start orientations `phi0` (in
-        modified polar coordinates) will be sampled uniformly from `phi_range`.
-    phi_range : (lophi, hiphi)
-        Range of angular positions of axon fibers at their starting points
-        (polar coordinates, degrees) to be sampled uniformly with `n_axons`
-        samples. Must be within [-180, 180].
-    n_rho : int, optional, default: 801
-        Number of sampling points along the radial axis (polar coordinates).
-    rho_range : (rho_min, rho_max), optional, default: (4.0, 45.0)
-        Lower and upper bounds for the radial position values (polar
-        coordinates).
-    loc_od : (x_od, y_od), optional, default: (15.0, 2.0)
-        Location of the center of the optic disc (x, y) in Cartesian
-        coordinates.
-    beta_sup : float, optional, default: -1.9
-        Scalar value for the superior retina (see Eq. 5, `\beta_s` in the
-        paper).
-    beta_inf : float, optional, default: 0.5
-        Scalar value for the inferior retina (see Eq. 6, `\beta_i` in the
-        paper.)
-    engine : str, optional, default: 'joblib'
-        Which computational back end to use:
-        - 'serial': Single-core computation
-        - 'joblib': Parallelization via joblib (requires `pip install joblib`)
-        - 'dask': Parallelization via dask (requires `pip install dask`). Dask
-                  backend can be specified via `threading`.
-    scheduler : str, optional, default: 'threading'
-        Which scheduler to use (irrelevant for 'serial' engine):
-        - 'threading': a scheduler backed by a thread pool
-        - 'multiprocessing': a scheduler backed by a process pool
-    n_jobs : int, optional, default: -1
-        Number of cores (threads) to run the model on in parallel. Specify -1
-        to use as many cores as available.
-
-    Returns
-    -------
-    axons: list of Nx2 arrays
-        For every generated axon bundle, returns a two-dimensional array of
-        axonal positions, where ax_pos[0, :] contains the (x, y) coordinates of
-        the axon segment closest to the optic disc, and aubsequent row indices
-        move the axon away from the optic disc. Number of rows is at most
-        `n_rho`, but might be smaller if the axon crosses the meridian.
-    """
-    if n_axons < 1:
-        raise ValueError('Number of axons must be >= 1.')
-    if np.any(np.abs(phi_range) > 180.0):
-        raise ValueError('phi must be within [-180, 180].')
-    if phi_range[0] > phi_range[1]:
-        raise ValueError('Lower bound on phi cannot be larger than the '
-                         'upper bound.')
-
-    phi = np.linspace(phi_range[0], phi_range[1], n_axons)
-    func_kwargs = {'n_rho': n_rho, 'rho_range': rho_range,
-                   'beta_sup': beta_sup, 'beta_inf': beta_inf,
-                   'loc_od': loc_od}
-    axons = utils.parfor(jansonius2009, phi, func_kwargs=func_kwargs,
-                         engine=engine, scheduler=scheduler, n_jobs=n_jobs)
-    return axons
 
 
 @utils.deprecated(alt_func='p2p.retina.grow_axon_bundles',
@@ -1330,6 +1375,8 @@ def jansonius(num_cells=500, num_samples=801, center=np.array([15, 2]),
     return x, y
 
 
+@utils.deprecated(alt_func='p2p.retina.OpticFiberLayer',
+                  deprecated_version='0.3', removed_version='0.4')
 def make_axon_map(xg, yg, jan_x, jan_y, axon_lambda=1, min_weight=0.001):
     axon_id = []
     axon_weight = []
@@ -1381,92 +1428,3 @@ def make_axon_map(xg, yg, jan_x, jan_y, axon_lambda=1, min_weight=0.001):
         axon_id.append(this_id)
         axon_weight.append(this_weight)
     return axon_id, axon_weight
-
-
-@utils.deprecated(alt_func='p2p.retina.make_axon_map',
-                  deprecated_version='0.3', removed_version='0.4')
-def make_axon_map_legacy(xg, yg, jan_x, jan_y, axon_lambda=1, min_weight=.001):
-    """Retinal axon map
-
-    Generates a mapping of how each pixel in the retina space is affected
-    by stimulation of underlying ganglion cell axons.
-    Parameters
-    ----------
-    xg, yg : array
-        meshgrid of pixel locations in units of visual angle sp
-    axon_lambda : float
-        space constant for how effective stimulation (or 'weight') falls off
-        with distance from the pixel back along the axon toward the optic disc
-        (default 1 degree)
-    min_weight : float
-        minimum weight falloff.  default .001
-
-    Returns
-    -------
-    axon_id : list
-        a list, for every pixel, of the index into the pixel in xg,yg space,
-        along the underlying axonal pathway.
-    axon_weight : list
-        a list, for every pixel, of the axon weight into the pixel in xg,yg
-        space
-
-    """
-    # initialize tuples
-    axon_xg = ()
-    axon_yg = ()
-    axon_dist = ()
-    axon_weight = ()
-    axon_id = ()
-
-    # loop through pixels as indexed into a single dimension
-    for px in range(0, len(xg.flat)):
-        # find the nearest axon to this pixel
-        d = (jan_x - xg.flat[px])**2 + (jan_y - yg.flat[px])**2
-        cur_ax_id = np.nanargmin(d)  # index into the current axon
-        [ax_pos_id0, ax_num] = np.unravel_index(cur_ax_id, d.shape)
-
-        dist = 0
-
-        cur_xg = xg.flat[px]
-        cur_yg = yg.flat[px]
-
-        # add first values to the list for this pixel
-        axon_dist = axon_dist + ([0],)
-        axon_weight = axon_weight + ([1],)
-        axon_xg = axon_xg + ([cur_xg],)
-        axon_yg = axon_yg + ([cur_yg],)
-        axon_id = axon_id + ([px],)
-
-        # now loop back along this nearest axon toward the optic disc
-        for ax_pos_id in range(ax_pos_id0 - 1, -1, -1):
-            # increment the distance from the starting point
-            ax = (jan_x[ax_pos_id + 1, ax_num] - jan_x[ax_pos_id, ax_num])**2
-            ay = (jan_y[ax_pos_id + 1, ax_num] - jan_y[ax_pos_id, ax_num])**2
-            dist += np.sqrt(ax ** 2 + ay ** 2)
-
-            # weight falls off exponentially as distance from axon cell body
-            weight = np.exp(-dist / axon_lambda)
-
-            # find the nearest pixel to the current position along the axon
-            dist_xg = np.abs(xg[0, :] - jan_x[ax_pos_id, ax_num])
-            dist_yg = np.abs(yg[:, 0] - jan_y[ax_pos_id, ax_num])
-            nearest_xg_id = dist_xg.argmin()
-            nearest_yg_id = dist_yg.argmin()
-            nearest_xg = xg[0, nearest_xg_id]
-            nearest_yg = yg[nearest_yg_id, 0]
-
-            # if the position along the axon has moved to a new pixel, and the
-            # weight isn't too small...
-            if weight > min_weight:
-                if nearest_xg != cur_xg or nearest_yg != cur_yg:
-                    # update the current pixel location
-                    cur_xg = nearest_xg
-                    cur_yg = nearest_yg
-
-                    # append the list
-                    axon_weight[px].append(np.exp(weight))
-                    axon_id[px].append(np.ravel_multi_index((nearest_yg_id,
-                                                             nearest_xg_id),
-                                                            xg.shape))
-
-    return list(axon_id), list(axon_weight)
