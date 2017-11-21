@@ -6,3 +6,4 @@ sk_video
 cython
 numba
 dask
+distributed
