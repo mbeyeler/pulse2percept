@@ -37,7 +37,8 @@ opts = dict(name=NAME,
             version=VERSION,
             packages=find_packages(),
             ext_modules=cythonize(extensions),
-            install_requires=REQUIRES)
+            install_requires=REQUIRES,
+            requires=REQUIRES)
 
 
 if __name__ == '__main__':
