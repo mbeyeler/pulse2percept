@@ -20,7 +20,6 @@ def configuration(parent_package='', top_path=None):
     config.add_subpackage('stimuli')
     config.add_subpackage('stimuli/tests')
     config.add_subpackage('utils')
-    config.add_subpackage('utils/tests')
     config.add_subpackage('io')
 
     # Submodules which have their own setup.py; e.g., because they use Cython:
