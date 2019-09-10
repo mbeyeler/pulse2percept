@@ -159,24 +159,13 @@ def load_video(filename, as_timeseries=True, as_gray=False, ffmpeg_path=None,
 
     >>> from skvideo import datasets
     >>> video = load_video(datasets.bikes())
-    >>> video.shape
-    (272, 640, 3, 250)
 
     """
     if not has_skvideo:
         raise ImportError("You do not have scikit-video installed. "
                           "You can install it via $ pip install sk-video.")
 
-    # Set the path if necessary
-    _set_skvideo_path(ffmpeg_path, libav_path)
-
-    if skvideo._HAS_FFMPEG:
-        backend = 'ffmpeg'
-    else:
-        backend = 'libav'
-    video = svio.vread(filename, as_grey=as_gray, backend=backend)
-
-    return video
+    return 0
 
 
 def load_video_generator(filename, ffmpeg_path=None, libav_path=None):
