@@ -158,7 +158,7 @@ def load_video(filename, as_timeseries=True, as_gray=False, ffmpeg_path=None,
     Load a video as a ``TimeSeries`` object:
 
     >>> from skvideo import datasets
-    >>> video = load_video_generator(datasets.bikes())
+    >>> video = load_video(datasets.bikes())
 
     """
     if not has_skvideo:
@@ -172,7 +172,8 @@ def load_video(filename, as_timeseries=True, as_gray=False, ffmpeg_path=None,
         backend = 'ffmpeg'
     else:
         backend = 'libav'
-    video = svio.vread(filename, as_grey=as_gray, backend=backend)
+    video = svio.vread(filename, as_grey=as_gray, backend=backend,
+                       verbose=0)
 
     return 0
 
