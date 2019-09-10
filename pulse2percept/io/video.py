@@ -159,8 +159,6 @@ def load_video(filename, as_timeseries=True, as_gray=False, ffmpeg_path=None,
 
     >>> from skvideo import datasets
     >>> video = load_video(datasets.bikes())
-    >>> video.tsample
-    0.04
     >>> video.shape
     (272, 640, 3, 250)
 
@@ -177,8 +175,6 @@ def load_video(filename, as_timeseries=True, as_gray=False, ffmpeg_path=None,
     else:
         backend = 'libav'
     video = svio.vread(filename, as_grey=as_gray, backend=backend)
-    logging.getLogger(__name__).info("Loaded video from file '%s'." % filename)
-    d_s = "Loaded video has shape (T, M, N, C) = " + str(video.shape)
 
     return video
 
