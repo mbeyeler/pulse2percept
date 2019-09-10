@@ -157,6 +157,12 @@ def load_video(filename, as_timeseries=True, as_gray=False, ffmpeg_path=None,
     --------
     Load a video as a ``TimeSeries`` object:
 
+    >>> from skvideo import datasets
+    >>> video = load_video(datasets.bikes())
+    >>> video.tsample
+    0.04
+    >>> video.shape
+    (272, 640, 3, 250)
 
     """
     if not has_skvideo:
@@ -174,17 +180,7 @@ def load_video(filename, as_timeseries=True, as_gray=False, ffmpeg_path=None,
     logging.getLogger(__name__).info("Loaded video from file '%s'." % filename)
     d_s = "Loaded video has shape (T, M, N, C) = " + str(video.shape)
 
-    if as_timeseries:
-        # TimeSeries has the time as the last dimensions: re-order dimensions,
-        # then squeeze out singleton dimensions
-        axes = np.roll(range(video.ndim), -1)
-        video = np.squeeze(np.transpose(video, axes=axes))
-        fps = load_video_framerate(filename)
-        d_s = "Reshaped video to shape (M, N, C, T) = " + str(video.shape)
-        return TimeSeries(1.0 / fps, video)
-    else:
-        # Return as ndarray
-        return video
+    return video
 
 
 def load_video_generator(filename, ffmpeg_path=None, libav_path=None):
