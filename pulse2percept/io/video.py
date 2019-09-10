@@ -165,6 +165,9 @@ def load_video(filename, as_timeseries=True, as_gray=False, ffmpeg_path=None,
         raise ImportError("You do not have scikit-video installed. "
                           "You can install it via $ pip install sk-video.")
 
+    # Set the path if necessary
+    _set_skvideo_path(ffmpeg_path, libav_path)
+
     return 0
 
 
