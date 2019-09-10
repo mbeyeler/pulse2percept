@@ -157,13 +157,6 @@ def load_video(filename, as_timeseries=True, as_gray=False, ffmpeg_path=None,
     --------
     Load a video as a ``TimeSeries`` object:
 
-    >>> from skvideo import datasets
-    >>> video = load_video(datasets.bikes())
-    >>> video.tsample
-    0.04
-    >>> video.shape
-    (272, 640, 3, 250)
-
 
     """
     if not has_skvideo:
