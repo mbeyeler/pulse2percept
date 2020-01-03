@@ -1,5 +1,6 @@
 import sys
 import abc
+import numpy as np
 
 from ..implants import ProsthesisSystem
 from ..utils import Frozen, PrettyPrint, GridXY, parfor
@@ -197,12 +198,11 @@ class BaseModel(Frozen, PrettyPrint, metaclass=abc.ABCMeta):
         """
         raise NotImplementedError
 
-    def predict_percept(self, implant, t=None):
+    def predict_percept(self, implant, t=None, n_frames=None, fps=20):
         """Predict a percept
-
         Parameters
         ----------
-        implant : :py:class:`~pulse2percept.implants.ProsthesisSystem`
+        implant : `ProsthesisSystem`
             Stimulus can be passed via
             :py:meth:`~pulse2percept.implants.ProsthesisSystem.stim`.
         fps : int, double
@@ -219,16 +219,91 @@ class BaseModel(Frozen, PrettyPrint, metaclass=abc.ABCMeta):
         if implant.stim is None:
             # Nothing to see here:
             return None
-        if implant.stim.time is not None:
-            # The stimulus has a time dimension
-            raise NotImplementedError
 
-        # The stimulus does not have a time dimesnion. In this case, we
-        # only need to run the spatial model:
-        return parfor(self._predict_pixel_percept,
-                      enumerate(self.grid),
-                      func_args=[implant],
-                      func_kwargs={'t': t},
-                      engine=self.engine, scheduler=self.scheduler,
-                      n_jobs=self.n_jobs,
-                      out_shape=self.grid.shape)
+        if implant.stim.time is None:
+            # The stimulus does not have a time dimension: In this case, we
+            # only need to run the spatial model:
+            bright = parfor(self._predict_pixel_percept,
+                            enumerate(self.grid),
+                            func_args=[implant],
+                            func_kwargs={'t': None},
+                            engine=self.engine, scheduler=self.scheduler,
+                            n_jobs=self.n_jobs,
+                            out_shape=self.grid.shape)
+            return np.where(bright > self.thresh_percept, bright, 0)
+
+        # Stimulus has time, so we need both spatial + temporal model:
+        if not self.has_time:
+            raise ValueError("Model does not have a temporal part")
+        if t is not None:
+            t_percept = np.asarray(t)
+        else:
+            fps = np.double(fps)
+            if fps <= 0:
+                raise ValueError("fps must be nonnegative, not %f." % fps)
+            if n_frames is None:
+                if implant.stim.time.max() < 1.0 / fps:
+                    # Simulate until the end of the stimulus:
+                    t_end = implant.stim.time.max()
+                    n_frames = 2
+                else:
+                    # We need to for the duration of the stimulus, rounding up:
+                    n_frames = max(2, np.ceil(implant.stim.time.max() * fps))
+                    t_end = n_frames / fps
+            else:
+                n_frames = int(n_frames)
+                if n_frames <= 0:
+                    raise ValueError("n_frames must be nonnegative, not "
+                                     "%d" % n_frames)
+                t_end = n_frames / fps
+            t_percept = np.linspace(0, t_end, num=n_frames)
+        # Simulate:
+        self.reset_state()
+        t_sim = 0
+        percept = []
+        cache_stim = None
+        print('dt:', self.dt)
+        print('t_percept:', t_percept)
+        for tp in t_percept:
+            # Step the temporal model from `t` to `t_percept`:
+            # print('tp:', tp)
+            while cache_stim is None or t_sim < tp:
+                # Last time step might be smaller, if `t_percept` is not
+                # divisible by `self.dt`:
+                dt_sim = min(self.dt, tp - t_sim)
+                # Calculate current map at time `t_sim`:
+                stim_at_t = implant.stim.interp(time=t_sim)
+                need_cmap = False
+                if cache_stim is None:
+                    need_cmap = True
+                else:
+                    if not np.allclose(stim_at_t.data, cache_stim.data):
+                        need_cmap = True
+                need_cmap = True
+                if need_cmap:
+                    # print('-', t_sim, 'calc cmap')
+                    # print('-', stim_at_t)
+                    # print('-', cache_stim)
+                    cmap = parfor(self._predict_pixel_percept,
+                                  enumerate(self.grid),
+                                  func_args=[implant],
+                                  func_kwargs={'t': t_sim},
+                                  engine=self.engine,
+                                  scheduler=self.scheduler,
+                                  n_jobs=self.n_jobs)
+                cache_stim = stim_at_t
+                # Step the temporal model:
+                # print('-', t_sim, 'step temp')
+                frame = parfor(self._step_temporal_model,
+                               enumerate(cmap),
+                               func_args=[dt_sim],
+                               engine=self.engine,
+                               scheduler=self.scheduler,
+                               n_jobs=self.n_jobs,
+                               out_shape=self.grid.shape)
+                # Add `frame` to `percept` output:
+                frame = np.where(frame > self.thresh_percept, frame, 0)
+                percept.append(frame)
+                # Increase the time counter:
+                t_sim += dt_sim
+        return percept

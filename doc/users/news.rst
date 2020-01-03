@@ -51,6 +51,13 @@ These studies are referenced throughout the Documentation:
                    2157-63, doi:`10.1016/j.visres.2009.04.029
                    <https://doi.org/10.1016/j.visres.2009.04.029>`_.
 
+.. [Nanduri2012] D Nanduri, I Fine, A Horsager, GM Boynton, MS Humayun,
+                 RJ Greenberg, JD Weiland (2012), Frequency and amplitude
+                 modulation have different effects on the percepts elicited
+                 by retinal stimulation. Investigative Ophthalmology & Visual
+                 Science 53:205-214, doi:`10.1167/iovs.11-8401
+                 <https://doi.org/10.1167/iovs.11-8401>`_.
+
 .. [Thompson2003] RW Thompson Jr, GD Barnett, MS Humayun, G Dagnelie
                   (2003). Facial recognition using simulated prosthetic
                   pixelized vision. Invest Ophthalmol Vis Sci 44,
