@@ -229,6 +229,7 @@ class Stimulus(PrettyPrint):
             # When none of the stimuliu have time=None, we need to merge the
             # time axes:
             if len(_time) > 1 and _time[0] is not None:
+                print('Merging time axes')
                 # Keep only the unique time points across stimuli:
                 new_time = np.unique(np.concatenate(_time))
                 # Now we need to interpolate the data values at each of these
@@ -376,8 +377,11 @@ class Stimulus(PrettyPrint):
             raise TypeError('"time" must be a tuple, slice, list, or NumPy '
                             'array, not %s.' % type(time))
         if axes is None:
-            _, axes = plt.subplots(nrows=len(electrodes),
-                                   figsize=(8, 1.2 * len(electrodes)))
+            if len(electrodes) == 1:
+                axes = plt.gca()
+            else:
+                _, axes = plt.subplots(nrows=len(electrodes),
+                                       figsize=(8, 1.2 * len(electrodes)))
         if not isinstance(axes, (list, np.ndarray)):
             # Convert to list so w can iterate over it:
             axes = [axes]
@@ -634,7 +638,7 @@ class Stimulus(PrettyPrint):
         self.__stim = stim
         # Set up the interpolator:
         self._interp = None
-        if self.time is None:
+        if self.time is None or self._interp_method is None:
             return
         if len(self.time) == 1:
             # Special case: Duplicate data with slightly different time points

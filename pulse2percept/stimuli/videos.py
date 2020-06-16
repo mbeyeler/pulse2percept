@@ -80,7 +80,7 @@ class VideoStimulus(Stimulus):
     """
 
     def __init__(self, fname, format=None, resize=None, anti_aliasing=False,
-                 electrodes=None, metadata=None, compress=False,
+                 electrodes=None, metadata=None, compress=False, as_gray=False,
                  interp_method='linear', extrapolate=False):
         # Open the video reader:
         reader = video_reader(fname, format=format)
@@ -90,24 +90,34 @@ class VideoStimulus(Stimulus):
             meta.update(metadata)
         meta['source'] = fname
         # Read the video:
-        vid = [frame for frame in reader]
-        # Consider downscaling before doing anything else (with anti-aliasing,
-        # this can take a while):
+        vid = np.array([frame for frame in reader])
+        if vid.ndim != 4:
+            raise ValueError("Video must have 4 channels, not %d." % vid.ndim)
+        n_time, n_rows, n_cols, n_channels = vid.shape
+        # Convert from frames x rows x columns x channels to
+        # rows x columns x frames x channels (necessary for skimage):
+        vid = vid.transpose((1, 2, 0, 3))
+        # Convert to grayscale:
+        if as_gray is not None:
+            vid = rgb2gray(vid)
+            n_channels = 1
+        # Downscale:
         if resize is not None:
-            vid = parfor(img_resize, vid, func_args=[resize],
-                         func_kwargs={'anti_aliasing': anti_aliasing})
-        if vid[0].ndim == 3 and vid[0].shape[-1] == 3:
-            vid = parfor(rgb2gray, vid)
-        vid = np.array(parfor(img_as_float, vid)).transpose((1, 2, 0))
+            vid = img_resize(vid, resize, anti_aliasing=anti_aliasing)
+            n_rows, n_cols = resize
+        vid = img_as_float(vid)
+        # Convert back to space x time:
+        if vid.ndim == 4:
+            # rows x columns x channels x time
+            vid = vid.transpose((0, 1, 3, 2))
         # Infer the time points from the video frame rate:
-        n_frames = vid.shape[-1]
-        time = np.arange(n_frames) * meta['fps']
+        time = np.arange(n_time) * meta['fps']
         # Call the Stimulus constructor:
-        super(VideoStimulus, self).__init__(vid.reshape((-1, n_frames)),
+        super(VideoStimulus, self).__init__(vid.reshape((-1, n_time)),
                                             time=time, electrodes=electrodes,
                                             metadata=meta, compress=compress,
-                                            interp_method=interp_method,
-                                            extrapolate=extrapolate)
+                                            interp_method=None,
+                                            extrapolate=False)
 
 
 class BostonTrain(VideoStimulus):

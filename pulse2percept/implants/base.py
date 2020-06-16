@@ -74,7 +74,7 @@ class ProsthesisSystem(PrettyPrint):
         pass
 
     def plot(self, ax=None, annotate=False, upside_down=False, xlim=None,
-             ylim=None, pad=None, step=None):
+             ylim=None, pad=None, step=None, autoscale=True):
         """Plot
 
         Parameters
@@ -107,7 +107,8 @@ class ProsthesisSystem(PrettyPrint):
         """
 
         if ax is None:
-            _, ax = plt.subplots(figsize=(15, 8))
+            ax = plt.gca()
+            plt.gcf().set_size_inches(12, 8)
 
         for name, electrode in self.items():
             electrode.plot(ax=ax)
@@ -136,13 +137,14 @@ class ProsthesisSystem(PrettyPrint):
         if ylim is None:
             ylim = (step * np.floor((ymin - pad) / step),
                     step * np.ceil((ymax + pad) / step))
-        ax.set_xlim(xlim)
-        ax.set_xticks(np.linspace(*xlim, num=5))
-        ax.set_xlabel('x (microns)')
-        ax.set_ylim(ylim)
-        ax.set_yticks(np.linspace(*ylim, num=5))
-        ax.set_ylabel('y (microns)')
-        ax.set_aspect('equal')
+        if autoscale:
+            ax.set_xlim(xlim)
+            ax.set_xticks(np.linspace(*xlim, num=5))
+            ax.set_xlabel('x (microns)')
+            ax.set_ylim(ylim)
+            ax.set_yticks(np.linspace(*ylim, num=5))
+            ax.set_ylabel('y (microns)')
+            ax.set_aspect('equal')
 
         # Need to flip y axis to have upper half == upper visual field
         if upside_down:

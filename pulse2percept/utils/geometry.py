@@ -1,5 +1,8 @@
 """`Grid2D`, `RetinalCoordTrafo`, `Watson2014Trafo`, `Watson2014DisplaceTrafo`,
    `cart2pol`, `pol2cart`"""
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
+
 import numpy as np
 from abc import ABCMeta, abstractmethod
 import scipy.stats as spst
@@ -116,6 +119,20 @@ class Grid2D(PrettyPrint):
 
     def reset(self):
         self._iter = 0
+
+    def plot(self, ax=None):
+        if ax is None:
+            ax = plt.gca()
+        xy = []
+        for array in [self.xret, self.yret]:
+            border = []
+            border += list(array[0, :-1])     # Top row (left to right), not the last element.
+            border += list(array[:-1, -1])    # Right column (top to bottom), not the last element.
+            border += list(array[-1, :0:-1])  # Bottom row (right to left), not the last element.
+            border += list(array[::-1, 0])    # Left column (bottom to top), all elements element.
+            xy.append(border)
+        ax.add_patch(Polygon(np.array(xy).T, alpha=0.5, ec='k', fc='gray',
+                             ls='--'))
 
 
 class RetinalCoordTransform(object, metaclass=ABCMeta):

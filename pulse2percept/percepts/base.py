@@ -80,8 +80,9 @@ class Percept(Data):
     def __next__(self):
         """Returns the next frame when iterating over all frames"""
         this_frame = self._next_frame
-        print('next, frame:', this_frame, 'shape:', self.data.shape[-1])
+        #print('next, frame:', this_frame, 'shape:', self.data.shape[-1])
         if this_frame >= self.data.shape[-1]:
+            #print('this_frame:', this_frame, 'stop')
             raise StopIteration
         self._next_frame += 1
         return self.data[..., this_frame]
@@ -118,13 +119,9 @@ class Percept(Data):
             # frame.
             raise NotImplementedError
         if ax is None:
+            ax = plt.gca()
             if 'figsize' in kwargs:
-                figsize = kwargs['figsize']
-            else:
-                figsize = (12, 8)
-                # figsize = np.int32(np.array(self.shape[:2][::-1]) / 15)
-                # figsize = np.maximum(figsize, 1)
-            _, ax = plt.subplots(figsize=figsize)
+                plt.gcf().set_size_inches(*kwargs['figsize'])
         else:
             if not isinstance(ax, Subplot):
                 raise TypeError("'ax' must be a Matplotlib axis, not "
@@ -186,6 +183,7 @@ class Percept(Data):
 
         """
         def update(data):
+            # print(data.min(), data.max(), data.shape)
             mat.set_data(data)
             return mat
 
@@ -202,7 +200,8 @@ class Percept(Data):
         # %matplotlib inline (although it can be kind of slow):
         plt.rcParams["animation.html"] = 'jshtml'
         if ax is None:
-            fig, ax = plt.subplots(figsize=(8, 5))
+            ax = plt.gca()
+            fig = plt.gcf()
         else:
             fig = ax.figure
         # Rewind the percept and show the first frame:
@@ -212,14 +211,15 @@ class Percept(Data):
         plt.close(fig)
         # Determine the frame rate:
         if fps is None:
-            interval = np.unique(np.diff(self.time))
+            interval = np.unique(np.diff(self.time).round(decimals=3))
             if len(interval) > 1:
                 raise NotImplementedError
             interval = interval[0]
         else:
             interval = 1000.0 / fps
         # Create the animation:
-        ani = FuncAnimation(fig, update, data_gen, interval=interval)
+        ani = FuncAnimation(fig, update, data_gen, interval=interval,
+                            save_count=self.data.shape[-1])
         return ani
 
     def save(self, fname, shape=None, fps=None):
