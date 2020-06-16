@@ -1,4 +1,4 @@
-"""`BostonTrain`"""
+"""`VideoStimulus`, `BostonTrain`"""
 from os.path import dirname, join
 import numpy as np
 from skimage.color import rgb2gray
@@ -108,3 +108,20 @@ class VideoStimulus(Stimulus):
                                             metadata=meta, compress=compress,
                                             interp_method=interp_method,
                                             extrapolate=extrapolate)
+
+
+class BostonTrain(VideoStimulus):
+
+    def __init__(self, resize=None, anti_aliasing=False, electrodes=None,
+                 metadata=None, compress=False, interp_method='linear',
+                 extrapolate=False):
+        # Load video:
+        module_path = dirname(__file__)
+        fname = join(module_path, 'data', 'boston-train.mp4')
+        super(BostonTrain, self).__init__(fname, resize=resize,
+                                          anti_aliasing=anti_aliasing,
+                                          electrodes=electrodes,
+                                          metadata=metadata,
+                                          compress=compress,
+                                          interp_method=interp_method,
+                                          extrapolate=extrapolate)

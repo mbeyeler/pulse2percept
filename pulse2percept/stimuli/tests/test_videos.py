@@ -4,7 +4,7 @@ import numpy.testing as npt
 import pytest
 from imageio import mimwrite
 
-from pulse2percept.stimuli import VideoStimulus
+from pulse2percept.stimuli import VideoStimulus, BostonTrain
 
 
 def test_VideoStimulus():
@@ -37,3 +37,17 @@ def test_VideoStimulus():
     npt.assert_equal(stim.time, np.arange(shape[0]))
     npt.assert_equal(stim.electrodes, np.arange(np.prod(resize)))
     os.remove(fname)
+
+
+def test_BostonTrain():
+    video = BostonTrain(anti_aliasing=True)
+    npt.assert_equal(video.shape, (235520, 91))
+    npt.assert_equal(video.metadata['source_size'], (640, 368))
+    npt.assert_almost_equal(video.data.min(), 0.0)
+    npt.assert_almost_equal(video.data.max(), 1.0)
+
+    video = BostonTrain(resize=(32, 32), anti_aliasing=False)
+    npt.assert_equal(video.shape, (1024, 91))
+    npt.assert_equal(video.metadata['source_size'], (640, 368))
+    npt.assert_almost_equal(video.data.min(), 0.00363, decimal=4)
+    npt.assert_almost_equal(video.data.max(), 1.0)
