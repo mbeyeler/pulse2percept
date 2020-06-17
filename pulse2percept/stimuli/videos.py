@@ -119,6 +119,144 @@ class VideoStimulus(Stimulus):
                                             metadata=meta, compress=compress,
                                             interp_method=None,
                                             extrapolate=False)
+        self.rewind()
+
+    def rewind(self):
+        """Rewind the iterator"""
+        self._next_frame = 0
+
+    def __iter__(self):
+        """Iterate over all frames in self.data"""
+        self.rewind()
+        return self
+
+    def __next__(self):
+        """Returns the next frame when iterating over all frames"""
+        this_frame = self._next_frame
+        #print('next, frame:', this_frame, 'shape:', self.data.shape[-1])
+        if this_frame >= self.data.shape[-1]:
+            #print('this_frame:', this_frame, 'stop')
+            raise StopIteration
+        self._next_frame += 1
+        return self.data[..., this_frame]
+
+    def play(self, fps=None, ax=None):
+        """Animate the percept as HTML with JavaScript
+
+        Parameters
+        ----------
+        fps : float or None
+            If None, uses the percept's time axis. Not supported for
+            non-homogeneous time axis.
+        ax : matplotlib.axes.Axes; optional, default: None
+            A Matplotlib Axes object. If None, a new Axes object will be
+            created.
+
+        Returns
+        -------
+        ani : matplotlib.animation.FuncAnimation
+            A Matplotlib animation object that will play the percept
+            frame-by-frame.
+
+        """
+        def update(data):
+            # print(data.min(), data.max(), data.shape)
+            mat.set_data(data)
+            return mat
+
+        def data_gen():
+            while True:
+                yield next(self)
+
+        if self.time is None:
+            raise ValueError("Cannot animate a percept with time=None.")
+
+        # There are several options to animate a percept in Jupyter/IPython
+        # (see https://stackoverflow.com/a/46878531). Displaying the animation
+        # as HTML with JavaScript is compatible with most browsers and even
+        # %matplotlib inline (although it can be kind of slow):
+        plt.rcParams["animation.html"] = 'jshtml'
+        if ax is None:
+            ax = plt.gca()
+            fig = plt.gcf()
+        else:
+            fig = ax.figure
+        # Rewind the percept and show the first frame:
+        self.rewind()
+        mat = ax.imshow(next(self), cmap='gray', vmax=self.data.max())
+        fig.colorbar(mat)
+        plt.close(fig)
+        # Determine the frame rate:
+        if fps is None:
+            interval = np.unique(np.diff(self.time).round(decimals=3))
+            if len(interval) > 1:
+                raise NotImplementedError
+            interval = interval[0]
+        else:
+            interval = 1000.0 / fps
+        # Create the animation:
+        ani = FuncAnimation(fig, update, data_gen, interval=interval,
+                            save_count=self.data.shape[-1])
+        return ani
+
+    def save(self, fname, shape=None, fps=None):
+        """Save the percept as an MP4 or GIF
+
+        Parameters
+        ----------
+        fname : str
+            The filename to be created, with the file extension indicating the
+            file type. Percepts with time=None can be saved as images (e.g.,
+            '.jpg', '.png', '.gif'). Multi-frame percepts can be saved as
+            movies (e.g., '.mp4', '.avi', '.mov') or '.gif'.
+        shape : (height, width) or None, optional, default: (320,)
+            The desired width x height of the resulting image/video.
+            Use (h, None) to use a specified height and automatically infer the
+            width from the percept's aspect ratio.
+            Analogously, use (None, w) to use a specified width.
+            If shape is None, width will be set to 320px and height will be
+            inferred accordingly.
+        fps : float or None
+            If None, uses the percept's time axis. Not supported for
+            non-homogeneous time axis.
+
+        Notes
+        -----
+        *  ``shape`` will be adjusted so that width and height are multiples
+            of 16 to ensure compatibility with most codecs and players.
+
+        """
+        if shape is None:
+            # Use 320px width and infer height from aspect ratio:
+            shape = (None, 320)
+        height, width = shape
+        if height is None and width is None:
+            raise ValueError('If shape is a tuple, must specify either height '
+                             'or width or both.')
+        # Infer height or width if necessary:
+        if height is None and width is not None:
+            height = width / self.data.shape[1] * self.data.shape[0]
+        elif height is not None and width is None:
+            width = height / self.data.shape[0] * self.data.shape[1]
+        # Rescale percept to desired shape:
+        data = resize(self.data, (np.int32(height), np.int32(width)))
+        data -= data.min()
+        if not np.isclose(data.max(), 0):
+            data /= data.max() * 255
+
+        if self.time is None:
+            # No time component, store as an image:
+            imageio.imwrite(fname, data.astype(np.uint8))
+        else:
+            # With time component, store as a movie:
+            if fps is None:
+                interval = np.unique(np.diff(self.time))
+                if len(interval) > 1:
+                    raise NotImplementedError
+                fps = 1000.0 / interval[0]
+            imageio.mimwrite(fname, data.transpose((2, 0, 1)).astype(np.uint8),
+                             fps=fps)
+        logging.getLogger(__name__).info('Created %s.' % fname)
 
 
 class BostonTrain(VideoStimulus):
