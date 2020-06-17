@@ -113,6 +113,7 @@ class VideoStimulus(Stimulus):
         # Infer the time points from the video frame rate:
         time = np.arange(n_time) * meta['fps']
         # Call the Stimulus constructor:
+        print('stim constructor')
         super(VideoStimulus, self).__init__(vid.reshape((-1, n_time)),
                                             time=time, electrodes=electrodes,
                                             metadata=meta, compress=compress,

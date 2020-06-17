@@ -150,6 +150,30 @@ class Stimulus(PrettyPrint):
                 'time': self.time, 'shape': self.shape,
                 'metadata': self.metadata}
 
+    def _merge_time_axes(self, _data, _time):
+        """Merge time axes
+
+        When a collection of source types is passed, it is possible that they
+        have different time axes (e.g., different time steps, or a different
+        stimulus duration). In this case, we need to merge all time axes into a
+        single, coherent one. This is expensive, because of interp1d.
+        """
+        # Keep only the unique time points across stimuli:
+        new_time = np.unique(np.concatenate(_time))
+        # Now we need to interpolate the data values at each of these
+        # new time points:
+        new_data = []
+        for t, d in zip(_time, _data):
+            if len(t) == 1:
+                # Special case: Duplicate data with slightly different
+                # time points so we can set up an interp1d:
+                t = np.array([t - 1e-12, t + 1e-12], dtype=np.float32)
+                d = np.repeat(d, 2, axis=1)
+            itp = interp1d(t.ravel(), d, bounds_error=None,
+                           fill_value='extrapolate')
+            new_data.append(itp(new_time))
+        return new_data, [new_time]
+
     def _from_source(self, source):
         """Extract the data container and time information from source data
 
@@ -197,13 +221,26 @@ class Stimulus(PrettyPrint):
             _data = source.data
             _time = source.time
             _electrodes = source.electrodes
+        elif isinstance(source, np.ndarray):
+            # A NumPy array is either 1-D (list of electrodes, time=None) or
+            # 2-D (electrodes x time points):
+            if source.ndim == 1:
+                _data = source.reshape((-1, 1))
+                _time = None
+                _electrodes = np.arange(_data.shape[0])
+            elif source.ndim == 2:
+                _data = source
+                _time = np.arange(_data.shape[-1], dtype=np.float32)
+                _electrodes = np.arange(_data.shape[0])
+            else:
+                raise ValueError("Cannot create Stimulus object from a %d-D "
+                                 "NumPy array. Must be < 2-D." % source.ndim)
         else:
-            # Input is either be a valid source type (see `self._from_source`)
-            # or a collection thereof. Thus treat everything as a collection
-            # and iterate:
+            # Input is either a scalar or (more likely) a collection of source
+            # types. Easiest to tream them all as a collection and iterate:
             if isinstance(source, dict):
                 iterator = source.items()
-            elif isinstance(source, (list, tuple, np.ndarray)):
+            elif isinstance(source, (list, tuple)):
                 iterator = enumerate(source)
             else:
                 iterator = enumerate([source])
@@ -226,26 +263,10 @@ class Stimulus(PrettyPrint):
             if len(np.unique([t is None for t in _time])) > 1:
                 raise ValueError("If one stimulus has time=None, all others "
                                  "must have time=None as well.")
-            # When none of the stimuliu have time=None, we need to merge the
-            # time axes:
+            # When none of the stimuli have time=None, we need to merge the
+            # time axes (this is expensive because of interp1d):
             if len(_time) > 1 and _time[0] is not None:
-                print('Merging time axes')
-                # Keep only the unique time points across stimuli:
-                new_time = np.unique(np.concatenate(_time))
-                # Now we need to interpolate the data values at each of these
-                # new time points:
-                new_data = []
-                for t, d in zip(_time, _data):
-                    if len(t) == 1:
-                        # Special case: Duplicate data with slightly different
-                        # time points so we can set up an interp1d:
-                        t = np.array([t - 1e-12, t + 1e-12], dtype=np.float32)
-                        d = np.repeat(d, 2, axis=1)
-                    itp = interp1d(t.ravel(), d, bounds_error=None,
-                                   fill_value='extrapolate')
-                    new_data.append(itp(new_time))
-                _data = new_data
-                _time = [new_time]
+                _data, _time = self._merge_time_axes(_data, _time)
             # Now make `_data` a 2-D NumPy array, with `_electrodes` as rows
             # and `_time` as columns (except sometimes `_time` is None).
             _data = np.vstack(_data) if _data else np.array([])
