@@ -11,8 +11,7 @@ from skimage.measure import moments as img_moments
 from skimage.transform import (resize as img_resize, rotate as img_rotate,
                                warp as img_warp, SimilarityTransform)
 from skimage.filters import (threshold_mean, threshold_minimum, threshold_otsu,
-                             threshold_multiotsu, threshold_local,
-                             threshold_isodata)
+                             threshold_local, threshold_isodata)
 
 from .base import Stimulus
 
@@ -140,9 +139,6 @@ class ImageStimulus(Stimulus):
                         neighborhood.
             *  'otsu': `Otsu's method
                        <https://scikit-image.org/docs/stable/api/skimage.filters.html#skimage.filters.threshold_otsu>_
-            *  'multiotsu': `Multi-Otsu method
-                            <https://scikit-image.org/docs/stable/api/skimage.filters.html#skimage.filters.threshold_multiotsu>`_
-                            to divide gray levels into multiple classes.
             *  'isodata': `ISODATA method
                           <https://scikit-image.org/docs/stable/api/skimage.filters.html#skimage.filters.threshold_isodata>`_,
                           also known as the Ridler-Calvard method or
@@ -162,8 +158,6 @@ class ImageStimulus(Stimulus):
                 img = img > threshold_local(img, **kwargs)
             elif thresh.lower() == 'otsu':
                 img = img > threshold_otsu(img, **kwargs)
-            elif thresh.lower() == 'multiotsu':
-                img = np.digitize(img, bins=threshold_multiotsu(img, **kwargs))
             elif thresh.lower() == 'isodata':
                 img = img > threshold_isodata(img, **kwargs)
             else:
